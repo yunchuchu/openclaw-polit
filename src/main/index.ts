@@ -1,5 +1,10 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import { registerIpcHandlers } from './ipc'
+import { getLogs } from './logging'
+import { ProcessSupervisor } from './processSupervisor'
+
+const supervisor = new ProcessSupervisor()
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -10,6 +15,12 @@ function createWindow() {
     }
   })
 
+  registerIpcHandlers({
+    startInstall: async () => {},
+    retryInstall: async () => {},
+    getLogs
+  })
+
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
@@ -18,6 +29,8 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow)
+
+app.on('before-quit', () => supervisor.stopAll())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
