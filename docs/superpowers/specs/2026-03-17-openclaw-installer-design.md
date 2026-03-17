@@ -26,6 +26,7 @@ Build a macOS + Windows desktop installer using Electron + Vue that automaticall
 - `openclaw dashboard --no-open` output format is stable and includes a single dashboard URL.
 - Official installers support silent install flags (to be verified for macOS pkg and Windows msi).
 - Users can grant system permission prompts when required.
+ - Gateway runs only while the desktop app is open; it stops when the app exits.
 
 ## Architecture Overview
 **Electron Main Process** handles all system tasks:
@@ -78,6 +79,21 @@ Build a macOS + Windows desktop installer using Electron + Vue that automaticall
 6. Start gateway and parse dashboard URL.
 7. Renderer navigates to embedded dashboard.
 
+## Dashboard URL Parsing Contract
+Use the first URL on the line that starts with `Dashboard URL:` in the `openclaw dashboard --no-open` output. Example:
+
+```
+🦞 OpenClaw 2026.3.12 (6472949)
+   Less clicking, more shipping, fewer "where did that file go" moments.
+
+Dashboard URL: http://127.0.0.1:18789/#token=c87410bce1c5015a3abad2eaa8de52d6385a3255dde6
+Copied to clipboard.
+Browser launch disabled (--no-open). Use the URL above.
+```
+
+Expected parse result:
+`http://127.0.0.1:18789/#token=c87410bce1c5015a3abad2eaa8de52d6385a3255dde6`
+
 ## Error Handling
 - Every stage emits a clear error code + user-friendly message.
 - UI offers retry and log copy.
@@ -87,6 +103,11 @@ Build a macOS + Windows desktop installer using Electron + Vue that automaticall
 - Only trusted official download URLs are allowed (whitelisted).
 - Dashboard token is not persisted; kept only in runtime memory.
 - All system commands executed in Main process with explicit allowlist.
+
+## Official Download Sources (Allowlist)
+- Node.js: `nodejs.org`
+- Git for Windows: `git-scm.com`
+- Git for macOS: `git-scm.com`
 
 ## Testing & Acceptance
 **Acceptance Criteria**
