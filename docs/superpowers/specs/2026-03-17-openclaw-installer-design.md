@@ -34,6 +34,11 @@ Build a macOS + Windows desktop installer using Electron + Vue that ensures Node
 - **Git (Windows)**: Prefer winget. If winget unavailable or fails, use bundled PortableGit and add it to system PATH.
 - **Git (macOS)**: Prefer brew. If brew unavailable or fails, use official pkg installer.
 
+## Installed Node LTS Detection
+- Fetch `https://nodejs.org/dist/index.json`.
+- The installed Node version is considered LTS if it exactly matches an entry with a non-null `lts` field.
+- If no match, treat it as non-LTS and upgrade when policy requires.
+
 ## Architecture Overview
 **Electron Main Process** handles all system tasks:
 - Environment detection
@@ -92,6 +97,14 @@ Build a macOS + Windows desktop installer using Electron + Vue that ensures Node
   - Windows: `node-v{version}-x64.msi` (or arm64 if detected)
   - macOS: `node-v{version}.pkg`
 
+## Package Manager Commands
+- **macOS (brew)**:
+  - Node: `brew install node@{ltsMajor}` if available, otherwise fall back to pkg.
+  - Git: `brew install git`
+- **Windows (winget)**:
+  - Node LTS: `winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements --silent`
+  - Git: `winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements --silent`
+
 ## Silent Install Strategy
 - **Windows Node MSI**: `msiexec /i <msi> /qn /norestart`
 - **Windows Git (Portable)**: extract bundled archive to a fixed location and add to machine PATH.
@@ -100,6 +113,11 @@ Build a macOS + Windows desktop installer using Electron + Vue that ensures Node
 ## Windows PATH Update (Portable Git)
 - Write to machine PATH (HKLM) and broadcast `WM_SETTINGCHANGE` so new shells pick up changes.
 - Requires admin privileges; UI informs user when UAC prompt appears.
+
+## Global npm Install Strategy
+- Run `npm i -g openclaw`.
+- If macOS returns EACCES, set `npm config set prefix ~/.openclaw/npm-global`, update PATH for the app process and the user’s shell profile, then retry.
+- On Windows, ensure `%APPDATA%\\npm` is on PATH (add if missing) before retrying.
 
 ## Dashboard URL Parsing Contract
 Use the first URL on the line that starts with `Dashboard URL:` in the `openclaw dashboard --no-open` output. Example:
