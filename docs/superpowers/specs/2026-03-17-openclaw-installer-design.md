@@ -3,13 +3,13 @@
 Date: 2026-03-17
 
 ## Summary
-Build a macOS + Windows desktop installer using Electron + Vue that automatically installs Node.js (latest LTS) and Git, installs OpenClaw via npm, starts the gateway, and embeds the dashboard web console inside the app. The flow is fully automated except for unavoidable system permission prompts (UAC / macOS installer authorization).
+Build a macOS + Windows desktop installer using Electron + Vue that ensures Node.js is LTS with major >= 22 and Git is available, installs OpenClaw via npm, starts the gateway, and embeds the dashboard web console inside the app. The flow is fully automated except for unavoidable system permission prompts (UAC / macOS installer authorization).
 
 ## Goals
 1. Detect presence and versions of Node.js and Git.
 2. Ensure Node.js is LTS and major version >= 22; install/upgrade to latest LTS if non-LTS or < 22.
 3. Install Git if missing.
-4. Prefer package managers (macOS: brew, Windows: winget). If unavailable or fails, fall back to official installers (pkg/msi) and run silently.
+4. Prefer package managers (macOS: brew, Windows: winget). If unavailable or fails, fall back to official installers (pkg/msi) where applicable; Windows Git falls back to bundled PortableGit.
 5. Run `npm i -g openclaw`.
 6. Start `openclaw gateway run` and obtain dashboard URL via `openclaw dashboard --no-open`.
 7. Embed the dashboard URL within the Electron app.
@@ -120,6 +120,7 @@ Expected parse result:
 - Every stage emits a clear error code + user-friendly message.
 - UI offers retry and log copy.
 - Failures in package manager route automatically fall back to official installer route.
+- If admin permission is denied (UAC/macOS authorization), the step fails fast and the UI explains that elevated privileges are required to proceed.
 
 ## Security & Safety
 - Only trusted official download URLs are allowed (whitelisted).
