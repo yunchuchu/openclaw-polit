@@ -7,11 +7,12 @@ Build a macOS + Windows desktop installer using Electron + Vue that automaticall
 
 ## Goals
 1. Detect presence and versions of Node.js and Git.
-2. Install Node.js (latest LTS) and Git if missing.
-3. Prefer package managers (macOS: brew, Windows: winget). If unavailable or fails, fall back to official installers (pkg/msi) and run silently.
-4. Run `npm i -g openclaw`.
-5. Start `openclaw gateway run` and obtain dashboard URL via `openclaw dashboard --no-open`.
-6. Embed the dashboard URL within the Electron app.
+2. Ensure Node.js is LTS and major version >= 22; install/upgrade to latest LTS if non-LTS or < 22.
+3. Install Git if missing.
+4. Prefer package managers (macOS: brew, Windows: winget). If unavailable or fails, fall back to official installers (pkg/msi) and run silently.
+5. Run `npm i -g openclaw`.
+6. Start `openclaw gateway run` and obtain dashboard URL via `openclaw dashboard --no-open`.
+7. Embed the dashboard URL within the Electron app.
 
 ## Non-Goals (v1)
 1. Offline installation support.
@@ -26,7 +27,12 @@ Build a macOS + Windows desktop installer using Electron + Vue that automaticall
 - `openclaw dashboard --no-open` output format is stable and includes a single dashboard URL.
 - Official installers support silent install flags (to be verified for macOS pkg and Windows msi).
 - Users can grant system permission prompts when required.
- - Gateway runs only while the desktop app is open; it stops when the app exits.
+- Gateway runs only while the desktop app is open; it stops when the app exits.
+
+## Dependency Policy
+- **Node.js**: If Node is missing, non-LTS, or major < 22, upgrade to latest LTS. If LTS and major >= 22, keep existing version.
+- **Git (Windows)**: Prefer winget. If winget unavailable or fails, use bundled PortableGit and add it to system PATH.
+- **Git (macOS)**: Prefer brew. If brew unavailable or fails, use official pkg installer.
 
 ## Architecture Overview
 **Electron Main Process** handles all system tasks:
@@ -79,6 +85,22 @@ Build a macOS + Windows desktop installer using Electron + Vue that automaticall
 6. Start gateway and parse dashboard URL.
 7. Renderer navigates to embedded dashboard.
 
+## Latest LTS Resolution (Node.js)
+- Source: `https://nodejs.org/dist/index.json`
+- Select the newest entry with a non-null `lts` field.
+- Download artifacts:
+  - Windows: `node-v{version}-x64.msi` (or arm64 if detected)
+  - macOS: `node-v{version}.pkg`
+
+## Silent Install Strategy
+- **Windows Node MSI**: `msiexec /i <msi> /qn /norestart`
+- **Windows Git (Portable)**: extract bundled archive to a fixed location and add to machine PATH.
+- **macOS PKG**: `installer -pkg <pkg> -target /`
+
+## Windows PATH Update (Portable Git)
+- Write to machine PATH (HKLM) and broadcast `WM_SETTINGCHANGE` so new shells pick up changes.
+- Requires admin privileges; UI informs user when UAC prompt appears.
+
 ## Dashboard URL Parsing Contract
 Use the first URL on the line that starts with `Dashboard URL:` in the `openclaw dashboard --no-open` output. Example:
 
@@ -121,6 +143,5 @@ Expected parse result:
 - Manual validation on macOS and Windows.
 
 ## Open Questions / To Verify
-1. Silent install flags for macOS Node/Git installers.
-2. Silent install flags for Windows Node/Git installers.
-3. Official download URL sources and version endpoints.
+1. Exact portable Git bundle version to ship in app resources.
+2. Confirm Git for macOS pkg URL pattern and any signing requirements.
