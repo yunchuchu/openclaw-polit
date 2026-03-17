@@ -4,11 +4,13 @@ import { downloadToFile } from './downloadManager'
 import { extractPortableGit, detectPortableGitRoot } from './portableGit'
 import { buildNodeInstallerUrl } from './nodeArtifacts'
 import { buildGitPkgUrl } from './gitArtifacts'
+import { assertAllowedCommand } from './commandAllowlist'
 
 export const PERMISSION_DENIED = 'PERMISSION_DENIED'
 
 export function runElevated(command: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    assertAllowedCommand(command)
     sudo.exec(command, { name: 'OpenClaw Installer' }, (error) => {
       if (error) {
         const message = String(error).toLowerCase()

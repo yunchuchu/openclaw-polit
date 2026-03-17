@@ -14,6 +14,7 @@ const allowedCommands = [
   'npm config set prefix "{prefix}"',
   'bash -lc "echo \'export PATH={prefix}/bin:$PATH\' >> ~/.zprofile"',
   'setx /M PATH "{path}"',
+  'powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\\"PATH\\",\\"Machine\\")"',
   'powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\\"PATH\\",\\"User\\")"',
   'powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable(\'PATH\',\'{path}\',\'Machine\')"',
   'powershell -NoProfile -Command "Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition \' [DllImport(\\\"user32.dll\\\")] public static extern int SendMessageTimeout(int hWnd,int Msg,int wParam,string lParam,int flags,int timeout,out int result); \' ; [Win32.NativeMethods]::SendMessageTimeout(0xffff,0x1A,0,\'Environment\',2,5000,[ref]0)"',
