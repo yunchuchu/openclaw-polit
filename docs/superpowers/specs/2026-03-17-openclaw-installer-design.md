@@ -1,0 +1,105 @@
+# OpenClaw Installer (Electron + Vue) - Design
+
+Date: 2026-03-17
+
+## Summary
+Build a macOS + Windows desktop installer using Electron + Vue that automatically installs Node.js (latest LTS) and Git, installs OpenClaw via npm, starts the gateway, and embeds the dashboard web console inside the app. The flow is fully automated except for unavoidable system permission prompts (UAC / macOS installer authorization).
+
+## Goals
+1. Detect presence and versions of Node.js and Git.
+2. Install Node.js (latest LTS) and Git if missing.
+3. Prefer package managers (macOS: brew, Windows: winget). If unavailable or fails, fall back to official installers (pkg/msi) and run silently.
+4. Run `npm i -g openclaw`.
+5. Start `openclaw gateway run` and obtain dashboard URL via `openclaw dashboard --no-open`.
+6. Embed the dashboard URL within the Electron app.
+
+## Non-Goals (v1)
+1. Offline installation support.
+2. Uninstall/cleanup of OpenClaw or system dependencies.
+3. Multi-version management or environment switching.
+
+## Target Platforms
+- macOS
+- Windows
+
+## Key Assumptions
+- `openclaw dashboard --no-open` output format is stable and includes a single dashboard URL.
+- Official installers support silent install flags (to be verified for macOS pkg and Windows msi).
+- Users can grant system permission prompts when required.
+
+## Architecture Overview
+**Electron Main Process** handles all system tasks:
+- Environment detection
+- Package manager strategy
+- Downloading installers
+- Running commands and supervising processes
+- Parsing dashboard URL
+
+**Electron Renderer (Vue)** handles UI:
+- Progress steps, logs, errors, retry actions
+- Embedded dashboard view (BrowserView/WebView)
+
+## Main Process Modules
+1. **EnvDetector**
+   - Detects Node and Git availability and versions.
+   - Validates “latest LTS” requirement.
+
+2. **PackageManagerStrategy**
+   - Determines availability of `brew` or `winget`.
+   - Chooses install path (package manager or fallback installer).
+
+3. **Installer**
+   - Performs installation for Node/Git.
+   - Handles privileges and checks results.
+
+4. **DownloadManager**
+   - Fetches official installers.
+   - Provides progress and retry support.
+
+5. **OpenClawManager**
+   - Runs `npm i -g openclaw`.
+   - Starts/stops gateway.
+   - Executes `openclaw dashboard --no-open` and parses URL.
+
+6. **ProcessSupervisor**
+   - Manages subprocess lifecycle and logging.
+   - Captures stdout/stderr for UI.
+
+## UI (Renderer) Structure
+- **Install Screen**: stepper, status, progress, log summary, retry button.
+- **Dashboard Screen**: embedded web console using the parsed URL.
+
+## Data Flow (Happy Path)
+1. App launches → EnvDetector runs.
+2. If Node/Git missing → PackageManagerStrategy selects install path.
+3. Install Node/Git (brew/winget or pkg/msi).
+4. Re-check environment to confirm success.
+5. Install OpenClaw globally with npm.
+6. Start gateway and parse dashboard URL.
+7. Renderer navigates to embedded dashboard.
+
+## Error Handling
+- Every stage emits a clear error code + user-friendly message.
+- UI offers retry and log copy.
+- Failures in package manager route automatically fall back to official installer route.
+
+## Security & Safety
+- Only trusted official download URLs are allowed (whitelisted).
+- Dashboard token is not persisted; kept only in runtime memory.
+- All system commands executed in Main process with explicit allowlist.
+
+## Testing & Acceptance
+**Acceptance Criteria**
+1. Fresh macOS install completes successfully end-to-end.
+2. Fresh Windows install completes successfully end-to-end.
+3. Failure at any step shows clear error + retry.
+4. Dashboard URL parses reliably from `openclaw dashboard --no-open` output.
+
+**Testing Scope**
+- Unit tests for URL parser and env detection.
+- Manual validation on macOS and Windows.
+
+## Open Questions / To Verify
+1. Silent install flags for macOS Node/Git installers.
+2. Silent install flags for Windows Node/Git installers.
+3. Official download URL sources and version endpoints.
