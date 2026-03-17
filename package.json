@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "semver": "^7.7.4",
     "vue": "^3.4.21"
   },
   "devDependencies": {
