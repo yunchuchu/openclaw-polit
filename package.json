@@ -1,0 +1,39 @@
+{
+  "name": "openclaw-installer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "electron": "^30.0.1",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.6",
+    "vitest": "^4.1.0",
+    "vue-tsc": "^2.0.26"
+  },
+  "build": {
+    "asarUnpack": [
+      "resources/portable-git/windows/*.7z",
+      "resources/portable-git/windows/*.7z.exe"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/portable-git/windows",
+        "to": "portable-git/windows"
+      }
+    ]
+  }
+}
