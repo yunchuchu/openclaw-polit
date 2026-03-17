@@ -1143,3 +1143,9 @@ git add docs/superpowers/plans/2026-03-17-openclaw-installer.md
 
 git commit -m "docs: add manual validation notes"
 ```
+
+#### Manual validation notes (2026-03-17)
+
+- [ ] `npm run dev` not executed here (GUI-dependent).
+- [ ] Success path and dashboard embed pending on local macOS environment.
+- [ ] Windows end-to-end pending on Windows host.
