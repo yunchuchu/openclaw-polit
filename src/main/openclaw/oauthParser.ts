@@ -53,7 +53,7 @@ export function parseOAuthOutput(output: string): {
     }
 
     if (!userCode) {
-      const codeMatch = line.match(/code[:\s]+([A-Z0-9-]+)/i)
+      const codeMatch = line.match(/(?:^|\s)code\b\s*(?:is|:)?\s*([A-Z0-9-]+)/i)
       if (codeMatch) userCode = codeMatch[1]
     }
   }

@@ -71,4 +71,19 @@ describe('parseOAuthOutput', () => {
     expect(result.userCode).toBe('Y0-LDRXQ')
     expect(result.error).toBeNull()
   })
+
+  it('extracts code from text when url lacks user_code param', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?client=qwen-code to approve access.
+│  Your code is QW-12345.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?client=qwen-code')
+    expect(result.userCode).toBe('QW-12345')
+    expect(result.error).toBeNull()
+  })
 })
