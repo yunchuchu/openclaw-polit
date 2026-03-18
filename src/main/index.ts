@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import fs from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc'
 import { emitError, emitLog, emitStep, execCommand, getLogs } from './logging'
@@ -79,7 +80,7 @@ async function runInstallFlow(win: BrowserWindow) {
 
   try {
     emitStep(win, 'Checking environment')
-    let env = await detectEnv(exec)
+    let env = await detectEnv(exec, platform)
 
     emitStep(win, 'Resolving Node.js LTS')
     const nodeIndex = await fetchNodeIndex(fetch, assertAllowedUrl)
@@ -170,7 +171,7 @@ async function runInstallFlow(win: BrowserWindow) {
     }
 
     await refreshPath(platform, exec)
-    env = await detectEnv(exec)
+    env = await detectEnv(exec, platform)
 
     if (!env.node.available || !env.git.available) {
       emitError(win, 'ENV_CHECK_FAILED', 'Node.js or Git is still missing after install.')
@@ -268,14 +269,32 @@ async function runGatewayFlow(win: BrowserWindow) {
 }
 
 function createWindow() {
+  const preloadJs = join(__dirname, '../preload/index.js')
+  const preloadMjs = join(__dirname, '../preload/index.mjs')
+  const preloadPath = existsSync(preloadJs) ? preloadJs : preloadMjs
   const win = new BrowserWindow({
     width: 1100,
     height: 760,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: preloadPath,
       webviewTag: true
     }
   })
+
+  if (!app.isPackaged) {
+    console.log(`[preload] path=${preloadPath} exists=${existsSync(preloadPath)}`)
+    win.webContents.on('console-message', (_event, level, message) => {
+      console.log(`[renderer][${level}] ${message}`)
+    })
+    win.webContents.once('did-finish-load', async () => {
+      try {
+        const hasOpenclaw = await win.webContents.executeJavaScript('Boolean(window.openclaw)')
+        console.log(`[preload] window.openclaw=${hasOpenclaw}`)
+      } catch (error) {
+        console.log('[preload] window.openclaw check failed', error)
+      }
+    })
+  }
 
   registerIpcHandlers({
     startInstall: async () => runInstallFlow(win),

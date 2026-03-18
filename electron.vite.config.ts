@@ -7,7 +7,15 @@ export default defineConfig({
     entry: 'src/main/index.ts'
   },
   preload: {
-    input: 'src/preload/index.ts'
+    input: 'src/preload/index.ts',
+    build: {
+      rollupOptions: {
+        output: {
+          format: 'cjs',
+          entryFileNames: 'index.js'
+        }
+      }
+    }
   },
   renderer: {
     root: 'src/renderer',

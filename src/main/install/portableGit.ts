@@ -1,10 +1,11 @@
-import { extractFull } from 'node-7z'
+import * as node7z from 'node-7z'
 import sevenBin from '7zip-bin'
 import fs from 'node:fs'
 import path from 'node:path'
 
 export async function extractPortableGit(archivePath: string, destDir: string): Promise<void> {
   await new Promise((resolve, reject) => {
+    const { extractFull } = node7z as { extractFull: typeof node7z['extractFull'] }
     const stream = extractFull(archivePath, destDir, {
       $bin: sevenBin.path7za
     })

@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+if (process.env.NODE_ENV !== 'production') {
+  console.log('[preload] loaded', { contextIsolation: process.contextIsolated })
+}
+
 contextBridge.exposeInMainWorld('openclaw', {
   startInstall: () => ipcRenderer.invoke('installer:start'),
   retryInstall: () => ipcRenderer.invoke('installer:retry'),

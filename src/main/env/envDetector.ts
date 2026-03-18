@@ -1,11 +1,11 @@
 type ExecResult = { stdout: string; stderr: string; code: number }
 export type ExecFn = (cmd: string) => Promise<ExecResult>
 
-export async function detectEnv(exec: ExecFn) {
+export async function detectEnv(exec: ExecFn, platform: NodeJS.Platform = process.platform) {
   const node = await exec('node -v')
   const git = await exec('git --version')
-  const brew = await exec('which brew')
-  const winget = await exec('where winget')
+  const brew = platform === 'darwin' ? await exec('which brew') : { stdout: '', stderr: '', code: 1 }
+  const winget = platform === 'win32' ? await exec('where winget') : { stdout: '', stderr: '', code: 1 }
   const gitVersionMatch = git.stdout.match(/(\d+\.\d+\.\d+)/)
 
   return {

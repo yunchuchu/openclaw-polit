@@ -11,10 +11,15 @@ const fakeExec = async (cmd: string) => {
 
 describe('detectEnv', () => {
   it('detects node, git, and package managers', async () => {
-    const result = await detectEnv(fakeExec)
+    const result = await detectEnv(fakeExec, 'darwin')
     expect(result.node.version).toBe('v22.0.0')
     expect(result.git.version).toBe('2.47.0')
     expect(result.managers.brew).toBe(true)
+    expect(result.managers.winget).toBe(false)
+  })
+
+  it('detects winget on windows', async () => {
+    const result = await detectEnv(fakeExec, 'win32')
     expect(result.managers.winget).toBe(true)
   })
 })
