@@ -17,7 +17,7 @@ import {
   resolveNodeInstallerUrl
 } from './install/installer'
 import { ensureWindowsNpmPath, installOpenClawGlobal } from './openclaw/npmGlobal'
-import { getDashboardUrl, startGateway } from './openclaw/openclawManager'
+import { getDashboardUrl, startGateway, startOAuthFlow } from './openclaw/openclawManager'
 
 const supervisor = new ProcessSupervisor()
 let currentDashboardUrl: string | null = null
@@ -196,15 +196,8 @@ async function runInstallFlow(win: BrowserWindow) {
 
     await refreshPath(platform, exec)
 
-    emitStep(win, 'Starting Gateway')
-    const gateway = await startGateway()
-    supervisor.track(gateway)
-    gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
-    gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
-
-    emitStep(win, 'Fetching Dashboard URL')
-    currentDashboardUrl = await getDashboardUrl(exec)
-    win.webContents.send('installer:success', { dashboardUrl: currentDashboardUrl })
+    // 安装完成后不自动启动 Gateway，由用户手动触发后续授权/启动流程
+    win.webContents.send('installer:done')
   } catch (error: any) {
     if (error?.code === PERMISSION_DENIED) {
       emitError(win, PERMISSION_DENIED, 'Administrator authorization is required to continue.')
@@ -221,6 +214,59 @@ async function runInstallFlow(win: BrowserWindow) {
   }
 }
 
+async function runAuthFlow(win: BrowserWindow) {
+  emitStep(win, 'Starting Qwen OAuth')
+
+  let lastParsed = {
+    url: null as string | null,
+    userCode: null as string | null,
+    error: 'MISSING_FIELDS' as string | null
+  }
+
+  const authProc = startOAuthFlow(({ url, userCode, error, chunk }) => {
+    if (chunk) emitLog(win, chunk)
+    lastParsed = { url, userCode, error }
+    win.webContents.send('auth:progress', { url, userCode, message: chunk })
+  })
+
+  supervisor.track(authProc)
+
+  await new Promise<void>((resolve, reject) => {
+    authProc.on('exit', (code) => {
+      if (code === 0) {
+        if (lastParsed.error) {
+          const payload = { code: 'AUTH_PARSE_FAILED', message: '未获取到授权链接，请重试。' }
+          emitError(win, payload.code, payload.message)
+          win.webContents.send('auth:error', payload)
+          reject(new Error('Auth parse failed'))
+          return
+        }
+        win.webContents.send('auth:done')
+        resolve()
+      } else {
+        const payload = { code: 'AUTH_FAILED', message: 'Qwen OAuth failed.' }
+        emitError(win, payload.code, payload.message)
+        win.webContents.send('auth:error', payload)
+        reject(new Error('Auth failed'))
+      }
+    })
+  })
+}
+
+async function runGatewayFlow(win: BrowserWindow) {
+  const exec = (cmd: string) => execCommand(cmd, win)
+
+  emitStep(win, 'Starting Gateway')
+  const gateway = await startGateway()
+  supervisor.track(gateway)
+  gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
+  gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
+
+  emitStep(win, 'Fetching Dashboard URL')
+  currentDashboardUrl = await getDashboardUrl(exec)
+  win.webContents.send('gateway:ready', { dashboardUrl: currentDashboardUrl })
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
@@ -234,6 +280,8 @@ function createWindow() {
   registerIpcHandlers({
     startInstall: async () => runInstallFlow(win),
     retryInstall: async () => runInstallFlow(win),
+    startAuth: async () => runAuthFlow(win),
+    startGateway: async () => runGatewayFlow(win),
     getLogs
   })
 

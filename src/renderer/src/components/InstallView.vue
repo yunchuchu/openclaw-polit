@@ -22,16 +22,16 @@
       <div class="error-title">Installation halted</div>
       <p>{{ error.message }}</p>
       <div class="error-actions">
-        <button class="primary" @click="emit('retry')">Retry</button>
-        <button class="ghost" @click="emit('copyLogs')">Copy Logs</button>
+        <button class="primary" @click="emit('retry')">重试</button>
+        <button class="ghost" @click="emit('copyLogs')">复制日志</button>
       </div>
     </div>
 
     <div v-else class="actions">
       <button class="primary" @click="emit('start')" :disabled="started">
-        {{ started ? 'Working...' : 'Start' }}
+        {{ started ? '安装中…' : '开始安装' }}
       </button>
-      <button v-if="started" class="ghost" @click="emit('copyLogs')">Copy Logs</button>
+      <button v-if="started" class="ghost" @click="emit('copyLogs')">复制日志</button>
     </div>
   </section>
 </template>

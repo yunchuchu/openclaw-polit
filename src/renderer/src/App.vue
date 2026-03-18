@@ -1,7 +1,7 @@
 <template>
   <div class="app-shell">
     <InstallView
-      v-if="!dashboardUrl"
+      v-if="stage === 'install'"
       :steps="steps"
       :current="currentStep"
       :log-summary="logSummary"
@@ -11,6 +11,23 @@
       @retry="retry"
       @copy-logs="copyLogs"
     />
+    <AuthView
+      v-else-if="stage === 'auth'"
+      :running="authRunning"
+      :url="authUrl"
+      :user-code="authCode"
+      :log-summary="logSummary"
+      :error="authError"
+      :done="authDone"
+      @start-auth="startAuth"
+      @retry-auth="startAuth"
+    />
+    <LaunchView
+      v-else-if="stage === 'launch'"
+      :starting="gatewayStarting"
+      :error="gatewayError"
+      @start-gateway="startGateway"
+    />
     <DashboardView v-else :url="dashboardUrl" />
   </div>
 </template>
@@ -18,6 +35,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import InstallView from './components/InstallView.vue'
+import AuthView from './components/AuthView.vue'
+import LaunchView from './components/LaunchView.vue'
 import DashboardView from './components/DashboardView.vue'
 
 type InstallError = { code: string; message: string }
@@ -27,16 +46,22 @@ const steps = [
   'Resolving Node.js LTS',
   'Installing Node.js',
   'Installing Git',
-  'Installing OpenClaw',
-  'Starting Gateway',
-  'Fetching Dashboard URL'
+  'Installing OpenClaw'
 ]
 
+const stage = ref<'install' | 'auth' | 'launch' | 'dashboard'>('install')
 const currentStep = ref('Ready')
 const logs = ref<string[]>([])
 const error = ref<InstallError | null>(null)
 const started = ref(false)
 const dashboardUrl = ref<string | null>(null)
+const authUrl = ref<string | null>(null)
+const authCode = ref<string | null>(null)
+const authDone = ref(false)
+const authRunning = ref(false)
+const authError = ref<InstallError | null>(null)
+const gatewayStarting = ref(false)
+const gatewayError = ref<InstallError | null>(null)
 
 const logSummary = computed(() => logs.value.slice(-6))
 
@@ -67,6 +92,32 @@ const retry = async () => {
   }
 }
 
+const startAuth = async () => {
+  if (!openclaw) return
+  authError.value = null
+  authDone.value = false
+  authRunning.value = true
+  logs.value = []
+  try {
+    await openclaw.startAuth()
+  } catch (err: any) {
+    authRunning.value = false
+    authError.value = { code: 'AUTH_START_FAILED', message: err?.message || 'Auth start failed.' }
+  }
+}
+
+const startGateway = async () => {
+  if (!openclaw) return
+  gatewayError.value = null
+  gatewayStarting.value = true
+  try {
+    await openclaw.startGateway()
+  } catch (err: any) {
+    gatewayStarting.value = false
+    gatewayError.value = { code: 'GATEWAY_START_FAILED', message: err?.message || 'Gateway start failed.' }
+  }
+}
+
 const copyLogs = async () => {
   if (!openclaw) return
   const logLines = await openclaw.getLogs()
@@ -85,8 +136,29 @@ onMounted(() => {
   openclaw.onError((payload: InstallError) => {
     error.value = payload
   })
-  openclaw.onSuccess((payload: { dashboardUrl: string }) => {
+  openclaw.onInstallDone(() => {
+    stage.value = 'auth'
+    started.value = false
+    currentStep.value = 'Install complete'
+  })
+  openclaw.onAuthProgress((payload: { url: string | null; userCode: string | null; message: string }) => {
+    authUrl.value = payload.url
+    authCode.value = payload.userCode
+    authRunning.value = true
+  })
+  openclaw.onAuthDone(() => {
+    authDone.value = true
+    authRunning.value = false
+    stage.value = 'launch'
+  })
+  openclaw.onAuthError((payload: InstallError) => {
+    authRunning.value = false
+    authError.value = payload
+  })
+  openclaw.onGatewayReady((payload: { dashboardUrl: string }) => {
     dashboardUrl.value = payload.dashboardUrl
+    gatewayStarting.value = false
+    stage.value = 'dashboard'
   })
 })
 </script>
