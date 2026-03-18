@@ -1,46 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-type MockProc = {
-  stdout: { on: (event: string, cb: (chunk: Buffer) => void) => void }
-  stderr: { on: (event: string, cb: (chunk: Buffer) => void) => void }
-  on: (event: 'error' | 'exit', cb: (payload?: unknown) => void) => void
-  _emit: (type: 'stdout' | 'stderr', data: string) => void
-  _emitEvent: (event: 'error' | 'exit', payload?: unknown) => void
-}
 type OAuthUpdate = { url: string | null; userCode: string | null; error: string | null; chunk: string }
 
-const createMockProc = (): MockProc => {
-  const listeners: Record<string, (payload?: unknown) => void> = {}
+type ExitPayload = { exitCode?: number | null }
+type MockPty = {
+  onData: (cb: (data: string) => void) => void
+  onExit: (cb: (payload: ExitPayload) => void) => void
+  kill: (signal?: string | number) => void
+  _emitData: (data: string) => void
+  _emitExit: (code?: number | null) => void
+}
+
+const createMockPty = (): MockPty => {
+  const listeners: Record<string, (payload?: ExitPayload) => void> = {}
 
   return {
-    stdout: {
-      on: (event, cb) => {
-        listeners[`stdout:${event}`] = cb
-      }
+    onData: (cb) => {
+      listeners.data = cb as (payload?: ExitPayload) => void
     },
-    stderr: {
-      on: (event, cb) => {
-        listeners[`stderr:${event}`] = cb
-      }
+    onExit: (cb) => {
+      listeners.exit = cb
     },
-    on: (event: 'error' | 'exit', cb) => {
-      listeners[`proc:${event}`] = cb
+    kill: () => {},
+    _emitData: (data) => {
+      listeners.data?.(data as unknown as ExitPayload)
     },
-    _emit: (type, data) => {
-      listeners[`${type}:data`]?.(Buffer.from(data))
-    },
-    _emitEvent: (event, payload) => {
-      listeners[`proc:${event}`]?.(payload)
+    _emitExit: (code) => {
+      listeners.exit?.({ exitCode: code })
     }
   }
 }
 
-vi.mock('node:child_process', () => ({
-  spawn: vi.fn(() => createMockProc())
+vi.mock('node-pty', () => ({
+  spawn: vi.fn(() => createMockPty())
 }))
 
 import { startOAuthFlow } from '../openclawManager'
-import { spawn } from 'node:child_process'
-const mockSpawn = vi.mocked(spawn)
+import { spawn as ptySpawn } from 'node-pty'
+const mockSpawn = vi.mocked(ptySpawn)
 
 describe('startOAuthFlow', () => {
   beforeEach(() => {
@@ -51,20 +47,20 @@ describe('startOAuthFlow', () => {
     startOAuthFlow(() => undefined)
 
     expect(mockSpawn).toHaveBeenCalledTimes(1)
-    expect(mockSpawn).toHaveBeenCalledWith(
-      'openclaw',
-      ['models', 'auth', 'login', '--provider', 'qwen'],
-      { stdio: 'pipe' }
-    )
+    const [cmd, args, options] = mockSpawn.mock.calls[0] ?? []
+    expect(cmd).toBe('openclaw')
+    expect(args).toEqual(['models', 'auth', 'login', '--provider', 'qwen'])
+    expect(options).toEqual(expect.objectContaining({ name: 'xterm-color', cols: 80, rows: 24 }))
   })
 
-  it('passes stdout and stderr chunks through to onUpdate', () => {
+  it('passes data chunks through to onUpdate', () => {
     const updates: OAuthUpdate[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
+    startOAuthFlow((payload) => updates.push(payload))
+    const pty = mockSpawn.mock.results[0]?.value as MockPty
 
-    proc._emit('stdout', 'Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
-    proc._emit('stdout', 'If prompted, enter the code TEST.')
-    proc._emit('stderr', 'error line')
+    pty._emitData('Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
+    pty._emitData('If prompted, enter the code TEST.')
+    pty._emitData('error line')
 
     expect(updates).toHaveLength(3)
     expect(updates[0].chunk).toBe('Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
@@ -74,21 +70,16 @@ describe('startOAuthFlow', () => {
     expect(updates.at(-1)?.userCode).toBe('TEST')
   })
 
-  it('propagates error events via the chunk payload', () => {
-    const updates: OAuthUpdate[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
-
-    proc._emitEvent('error', new Error('boom'))
-
-    expect(updates.at(-1)?.chunk).toBe('boom')
-  })
-
   it('emits an empty chunk on exit', () => {
     const updates: OAuthUpdate[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
-
-    proc._emitEvent('exit')
-
+    const proc = startOAuthFlow((payload) => updates.push(payload))
+    const pty = mockSpawn.mock.results[0]?.value as MockPty
+    let exitCode: number | null = null
+    proc.on('exit', (code) => {
+      exitCode = code
+    })
+    pty._emitExit(0)
     expect(updates.at(-1)?.chunk).toBe('')
+    expect(exitCode).toBe(0)
   })
 })

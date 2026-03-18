@@ -14,6 +14,7 @@
   "dependencies": {
     "7zip-bin": "^5.2.0",
     "node-7z": "^3.0.0",
+    "node-pty": "^1.0.0",
     "semver": "^7.7.4",
     "sudo-prompt": "^9.2.1",
     "vue": "^3.4.21"

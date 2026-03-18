@@ -1,8 +1,44 @@
 import { spawn } from 'node:child_process'
+import * as nodePty from 'node-pty'
+import fs from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
 import { parseDashboardUrl } from './parseDashboardUrl'
 import { parseOAuthOutput } from './oauthParser'
 
 const MAX_OAUTH_BUFFER_CHARS = 20000
+const require = createRequire(import.meta.url)
+
+type OAuthProcess = {
+  on: (event: 'exit', cb: (code: number | null) => void) => void
+  kill: (signal?: NodeJS.Signals | number) => void
+}
+
+const ensurePtyHelperExecutable = () => {
+  if (process.platform === 'win32') return
+  const candidates: string[] = []
+
+  try {
+    const entry = require.resolve('node-pty')
+    const root = path.resolve(entry, '..', '..')
+    candidates.push(path.join(root, 'build', 'Release', 'spawn-helper'))
+    candidates.push(path.join(root, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper'))
+  } catch {
+    return
+  }
+
+  for (const helperPath of candidates) {
+    try {
+      if (!fs.existsSync(helperPath)) continue
+      const stat = fs.statSync(helperPath)
+      if ((stat.mode & 0o111) === 0) {
+        fs.chmodSync(helperPath, 0o755)
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
 
 export async function startGateway() {
   return spawn('openclaw', ['gateway', 'run'], { stdio: 'pipe' })
@@ -19,9 +55,17 @@ export async function getDashboardUrl(
 
 export function startOAuthFlow(
   onUpdate: (data: { url: string | null; userCode: string | null; error: string | null; chunk: string }) => void
-) {
-  const proc = spawn('openclaw', ['models', 'auth', 'login', '--provider', 'qwen'], { stdio: 'pipe' })
+): OAuthProcess {
+  ensurePtyHelperExecutable()
+  const proc = nodePty.spawn('openclaw', ['models', 'auth', 'login', '--provider', 'qwen'], {
+    name: 'xterm-color',
+    cols: 80,
+    rows: 24,
+    cwd: process.cwd(),
+    env: process.env as NodeJS.ProcessEnv
+  })
   let buffer = ''
+  const exitListeners: Array<(code: number | null) => void> = []
 
   const pushUpdate = (chunk: string) => {
     const parsed = parseOAuthOutput(buffer)
@@ -36,17 +80,18 @@ export function startOAuthFlow(
     pushUpdate(text)
   }
 
-  proc.stdout?.on('data', (chunk) => handleChunk(chunk.toString()))
-  proc.stderr?.on('data', (chunk) => handleChunk(chunk.toString()))
-
-  proc.on('error', (err) => {
-    const message = String(err && (err as Error).message ? (err as Error).message : err)
-    pushUpdate(message)
-  })
-
-  proc.on('exit', () => {
+  proc.onData((data) => handleChunk(String(data)))
+  proc.onExit(({ exitCode }) => {
     pushUpdate('')
+    exitListeners.forEach((listener) => listener(exitCode ?? null))
   })
 
-  return proc
+  return {
+    on: (event, cb) => {
+      if (event === 'exit') exitListeners.push(cb)
+    },
+    kill: (signal) => {
+      proc.kill(signal)
+    }
+  }
 }

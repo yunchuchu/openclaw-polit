@@ -1,9 +1,11 @@
-import { ChildProcess } from 'node:child_process'
+type KillableProcess = {
+  kill: (signal?: NodeJS.Signals | number) => void
+}
 
 export class ProcessSupervisor {
-  private children: ChildProcess[] = []
+  private children: KillableProcess[] = []
 
-  track(proc: ChildProcess) {
+  track(proc: KillableProcess) {
     this.children.push(proc)
   }
 
