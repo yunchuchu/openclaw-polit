@@ -87,7 +87,38 @@ describe('parseOAuthOutput', () => {
     expect(result.error).toBeNull()
   })
 
-  it('does not extend url when the next line is plain text', () => {
+  it('prefers authorize url when multiple urls appear', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Connect via https://chat.qwen.ai/connect?client=qwen-code for setup.
+│  For authorization, go to https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code.
+│  If prompted, enter the code Y0-LDRXQ.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
+
+  it('trims closing parentheses from the extracted url', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code)
+│  If prompted, enter the code Y0-LDRXQ.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
+
+  it('does not extend url when it ends with a question mark before plain text', () => {
     const output = `
 ◑  Starting Qwen OAuth…
 
