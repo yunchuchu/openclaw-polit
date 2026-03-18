@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process'
 import { parseDashboardUrl } from './parseDashboardUrl'
 import { parseOAuthOutput } from './oauthParser'
 
+const MAX_OAUTH_BUFFER_CHARS = 20000
+
 export async function startGateway() {
   return spawn('openclaw', ['gateway', 'run'], { stdio: 'pipe' })
 }
@@ -21,14 +23,30 @@ export function startOAuthFlow(
   const proc = spawn('openclaw', ['models', 'auth', 'login', '--provider', 'qwen'], { stdio: 'pipe' })
   let buffer = ''
 
+  const pushUpdate = (chunk: string) => {
+    const parsed = parseOAuthOutput(buffer)
+    onUpdate({ ...parsed, chunk })
+  }
+
   const handleChunk = (text: string) => {
     buffer += text
-    const parsed = parseOAuthOutput(buffer)
-    onUpdate({ ...parsed, chunk: text })
+    if (buffer.length > MAX_OAUTH_BUFFER_CHARS) {
+      buffer = buffer.slice(-MAX_OAUTH_BUFFER_CHARS)
+    }
+    pushUpdate(text)
   }
 
   proc.stdout?.on('data', (chunk) => handleChunk(chunk.toString()))
   proc.stderr?.on('data', (chunk) => handleChunk(chunk.toString()))
+
+  proc.on('error', (err) => {
+    const message = String(err && (err as Error).message ? (err as Error).message : err)
+    pushUpdate(message)
+  })
+
+  proc.on('exit', () => {
+    pushUpdate('')
+  })
 
   return proc
 }
