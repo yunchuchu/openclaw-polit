@@ -69,9 +69,10 @@ Date: 2026-03-18
 
 解析器需容忍行首标记（例如 `◇`, `│`, `◑`）与多余空白，并具备以下鲁棒性：
 1. **URL 跨行**：若 `authorize` URL 被换行拆分，只在下一行继续片段看起来像查询参数（以 `?` / `&` 开头或包含 `=`）时才拼接。
-2. **尾随标点**：去除 URL 末尾可能出现的标点（如 `.`、`)`、`,`），避免无效 URL。
-3. **user_code 兜底**：优先从 URL query 中读取 `user_code`；若不存在，则从文本行中匹配 `code is` / `code:` / `enter the code` 等自然语言表述。
-4. **缺失字段**：URL 或 user_code 任一缺失时，返回错误（例如 `MISSING_FIELDS`），并提示“未获取到授权链接，请重试”。
+2. **尾随标点**：去除 URL 末尾可能出现的标点或包裹符（如 `.`、`,``?`、`)`、`]`、`}` 等），避免无效 URL。
+3. **URL 选择**：优先匹配包含 `authorize` 的 URL；若未找到，则回退匹配任意 URL（仅用于兜底）。
+4. **user_code 兜底**：优先从 URL query 中读取 `user_code`；若不存在，则从文本行中匹配 `code is` / `code:` / `enter the code` 等自然语言表述。
+5. **缺失字段**：URL 或 user_code 任一缺失时，返回错误（例如 `MISSING_FIELDS`），并提示“未获取到授权链接，请重试”。
 
 ## 状态机
 1. `installing` → `installed`

@@ -83,8 +83,21 @@ describe('parseOAuthOutput', () => {
   it('does not append plain text after question mark', () => {
     const output = `Open https://chat.qwen.ai/authorize?\nto approve access.`
     const result = parseOAuthOutput(output)
-    expect(result.url).toBe('https://chat.qwen.ai/authorize?')
+    expect(result.url).toBe('https://chat.qwen.ai/authorize')
     expect(result.error).toBe('MISSING_FIELDS')
+  })
+
+  it('prefers authorize url when multiple urls exist', () => {
+    const output = `Open https://example.com/help\nOpen https://chat.qwen.ai/authorize?user_code=QW-123&client=qwen-code`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=QW-123&client=qwen-code')
+    expect(result.userCode).toBe('QW-123')
+  })
+
+  it('trims trailing bracket characters in url', () => {
+    const output = `Open https://chat.qwen.ai/authorize?user_code=QW-123&client=qwen-code)`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=QW-123&client=qwen-code')
   })
 })
 ```
@@ -108,20 +121,24 @@ export function parseOAuthOutput(output: string): {
     .filter(Boolean)
 
   const extractUrl = () => {
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i]
-      const match = line.match(/https?:\/\/\S*authorize\S*/)
-      if (!match) continue
-      let url = match[0].replace(/[).,]+$/, '')
-      if ((url.endsWith('?') || url.endsWith('&')) && i + 1 < lines.length) {
-        const next = lines[i + 1].split(/\s+/)[0]
-        if (/^[?&]/.test(next) || next.includes('=')) {
-          url = `${url}${next}`
+    const findUrl = (pattern: RegExp) => {
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i]
+        const match = line.match(pattern)
+        if (!match) continue
+        let url = match[0].replace(/[).,;:!?\]\}]+$/, '')
+        if ((url.endsWith('?') || url.endsWith('&')) && i + 1 < lines.length) {
+          const next = lines[i + 1].split(/\s+/)[0]
+          if (/^[?&]/.test(next) || next.includes('=')) {
+            url = `${url}${next}`
+          }
         }
+        return url.replace(/[).,;:!?\]\}]+$/, '')
       }
-      return url
+      return null
     }
-    return null
+
+    return findUrl(/https?:\/\/\S*authorize\S*/) ?? findUrl(/https?:\/\/\S+/)
   }
 
   const extractCode = (text: string) => {
