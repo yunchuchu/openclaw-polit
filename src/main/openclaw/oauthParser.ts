@@ -28,15 +28,14 @@ export function parseOAuthOutput(output: string): {
         const remainder = line.slice(startIndex + candidate.length).trim()
         let lookahead = index
 
-        while (!remainder && lookahead + 1 < lines.length) {
+        if (!remainder && lookahead + 1 < lines.length) {
           const nextLine = lines[lookahead + 1]
           const token = nextLine.split(/\s+/)[0] ?? ''
           const sanitized = token.replace(trailingPunctuation, '')
-          if (!sanitized) break
-          const shouldExtend = /^[?&]/.test(sanitized) || sanitized.includes('=')
-          if (!shouldExtend) break
-          candidate += sanitized
-          lookahead++
+          if (sanitized) {
+            const shouldExtend = /^[?&]/.test(sanitized) || sanitized.includes('=')
+            if (shouldExtend) candidate += sanitized
+          }
         }
 
         return trimTrailing(candidate)
