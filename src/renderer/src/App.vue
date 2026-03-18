@@ -145,7 +145,6 @@ onMounted(() => {
     authUrl.value = payload.url
     authCode.value = payload.userCode
     authRunning.value = true
-    if (payload.message) logs.value.push(payload.message.trim())
   })
   openclaw.onAuthDone(() => {
     authDone.value = true
