@@ -29,10 +29,11 @@ const ensurePtyHelperExecutable = () => {
 
   for (const helperPath of candidates) {
     try {
-      if (!fs.existsSync(helperPath)) continue
-      const stat = fs.statSync(helperPath)
+      const resolved = helperPath.replace('app.asar', 'app.asar.unpacked')
+      if (!fs.existsSync(resolved)) continue
+      const stat = fs.statSync(resolved)
       if ((stat.mode & 0o111) === 0) {
-        fs.chmodSync(helperPath, 0o755)
+        fs.chmodSync(resolved, 0o755)
       }
     } catch {
       // ignore
