@@ -87,14 +87,28 @@ describe('parseOAuthOutput', () => {
     expect(result.error).toBeNull()
   })
 
-  it('prefers authorize url when multiple urls appear', () => {
+  it('prefers authorize url when multiple urls share the same line', () => {
     const output = `
 ◑  Starting Qwen OAuth…
 
 ◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
-│  Connect via https://chat.qwen.ai/connect?client=qwen-code for setup.
-│  For authorization, go to https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code.
+│  Connect via https://chat.qwen.ai/connect?client=qwen-code and https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code for setup.
 │  If prompted, enter the code Y0-LDRXQ.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
+
+  it('does not treat authorize-only queries as authorize path', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Visit https://example.com/help https://chat.qwen.ai/?redirect=authorize https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code for details.
+│  Your code is Y0-LDRXQ.
 ╰──────────────────────────────────────────────────────────────────────────╯
 `
     const result = parseOAuthOutput(output)

@@ -11,44 +11,56 @@ export function parseOAuthOutput(output: string): {
 
   let url: string | null = null
   let userCode: string | null = null
-  let fallbackUrl: string | null = null
-  let authorizeUrl: string | null = null
 
   const trailingPunctuation = /[.,;:!?)}\]\}]+$/
   const trimTrailing = (value: string) => value.replace(trailingPunctuation, '')
 
-  const extractUrl = (line: string, index: number) => {
-    const match = line.match(/https?:\/\/[^\s'"<>]+/i)
-    if (!match) return null
-    let candidate = match[0]
-    const remainder = line.slice(line.indexOf(candidate) + candidate.length).trim()
-    let lookahead = index
+  const urlRegex = /https?:\/\/[^\s'"<>]+/gi
+  const collectCandidatesFromLine = (line: string, index: number): string[] => {
+    urlRegex.lastIndex = 0
+    const matches = Array.from(line.matchAll(urlRegex))
+    if (!matches.length) return []
 
-    while (!remainder && lookahead + 1 < lines.length) {
-      const nextLine = lines[lookahead + 1]
-      const token = nextLine.split(/\s+/)[0] ?? ''
-      const sanitized = token.replace(trailingPunctuation, '')
-      if (!sanitized) break
-      const shouldExtend = /^[?&]/.test(sanitized) || sanitized.includes('=')
-      if (!shouldExtend) break
-      candidate += sanitized
-      lookahead++
-    }
+    return matches
+      .map(match => {
+        let candidate = match[0]
+        const startIndex = match.index ?? 0
+        const remainder = line.slice(startIndex + candidate.length).trim()
+        let lookahead = index
 
-    return trimTrailing(candidate)
+        while (!remainder && lookahead + 1 < lines.length) {
+          const nextLine = lines[lookahead + 1]
+          const token = nextLine.split(/\s+/)[0] ?? ''
+          const sanitized = token.replace(trailingPunctuation, '')
+          if (!sanitized) break
+          const shouldExtend = /^[?&]/.test(sanitized) || sanitized.includes('=')
+          if (!shouldExtend) break
+          candidate += sanitized
+          lookahead++
+        }
+
+        return trimTrailing(candidate)
+      })
+      .filter(Boolean)
   }
 
+  const candidates: Array<{ value: string; isAuthorizePath: boolean }> = []
   for (let idx = 0; idx < lines.length; idx++) {
-    const candidate = extractUrl(lines[idx], idx)
-    if (!candidate) continue
-    if (!fallbackUrl) fallbackUrl = candidate
-    if (/authorize/i.test(candidate)) {
-      authorizeUrl = candidate
-      break
+    const lineCandidates = collectCandidatesFromLine(lines[idx], idx)
+    for (const candidate of lineCandidates) {
+      const isAuthorizePath = (() => {
+        try {
+          return new URL(candidate).pathname.toLowerCase().includes('/authorize')
+        } catch {
+          return false
+        }
+      })()
+      candidates.push({ value: candidate, isAuthorizePath })
     }
   }
 
-  url = authorizeUrl ?? fallbackUrl
+  const authorizeCandidate = candidates.find(c => c.isAuthorizePath)?.value ?? null
+  url = authorizeCandidate ?? candidates[0]?.value ?? null
 
   if (url) {
     try {
