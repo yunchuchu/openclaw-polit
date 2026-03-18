@@ -61,12 +61,16 @@ describe('startOAuthFlow', () => {
     const updates: any[] = []
     const proc = startOAuthFlow((payload) => updates.push(payload))
 
-    proc._emit('stdout', 'url line')
+    proc._emit('stdout', 'Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
+    proc._emit('stdout', 'If prompted, enter the code TEST.')
     proc._emit('stderr', 'error line')
 
-    expect(updates).toHaveLength(2)
-    expect(updates[0].chunk).toBe('url line')
-    expect(updates[1].chunk).toBe('error line')
+    expect(updates).toHaveLength(3)
+    expect(updates[0].chunk).toBe('Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
+    expect(updates[1].chunk).toBe('If prompted, enter the code TEST.')
+    expect(updates[2].chunk).toBe('error line')
+    expect(updates.at(-1)?.url).toContain('https://chat.qwen.ai/authorize?user_code=TEST')
+    expect(updates.at(-1)?.userCode).toBe('TEST')
   })
 
   it('propagates error events via the chunk payload', () => {
