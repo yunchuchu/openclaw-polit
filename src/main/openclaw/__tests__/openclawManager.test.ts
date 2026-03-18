@@ -58,8 +58,8 @@ describe('startOAuthFlow', () => {
   })
 
   it('passes stdout and stderr chunks through to onUpdate', () => {
-    const updates: any[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload))
+    const updates: Array<{ url: string | null; userCode: string | null; error: string | null; chunk: string }> = []
+    const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
 
     proc._emit('stdout', 'Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
     proc._emit('stdout', 'If prompted, enter the code TEST.')
@@ -74,8 +74,8 @@ describe('startOAuthFlow', () => {
   })
 
   it('propagates error events via the chunk payload', () => {
-    const updates: any[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload))
+    const updates: Array<{ url: string | null; userCode: string | null; error: string | null; chunk: string }> = []
+    const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
 
     proc._emitEvent('error', new Error('boom'))
 
@@ -83,8 +83,8 @@ describe('startOAuthFlow', () => {
   })
 
   it('emits an empty chunk on exit', () => {
-    const updates: any[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload))
+    const updates: Array<{ url: string | null; userCode: string | null; error: string | null; chunk: string }> = []
+    const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
 
     proc._emitEvent('exit')
 
