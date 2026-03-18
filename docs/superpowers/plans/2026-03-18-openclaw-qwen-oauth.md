@@ -10,6 +10,15 @@
 
 ---
 
+## 进度
+- [x] Task 1：OAuth 输出解析器
+- [x] Task 2：OpenClaw 管理器 OAuth 流程
+- [x] Task 3：命令白名单
+- [x] Task 4：主进程流程拆分
+- [x] Task 5：Preload 暴露新 API 与事件
+- [x] Task 6：渲染进程 UI 三步改造
+- [ ] Task 7：端到端手动验收（按你的要求先跳过）
+
 ## 文件结构（本次变更范围）
 **新建**
 - `/Users/yunchuchu/workSpace/project/openclawPilot/src/main/openclaw/oauthParser.ts`
