@@ -3,27 +3,57 @@ export function parseOAuthOutput(output: string): {
   userCode: string | null
   error: string | null
 } {
-  const lines = output.split(/\r?\n/).map(line => line.replace(/^\s*[◇│◑]+\s?/, '').trim())
+  const prefixPattern = /^\s*[◇│◑]+\s?/
+  const lines = output
+    .split(/\r?\n/)
+    .map(line => line.replace(prefixPattern, '').trim())
+    .filter(Boolean)
+
   let url: string | null = null
   let userCode: string | null = null
 
-  for (const line of lines) {
+  const extractUrl = (line: string, index: number) => {
+    const match = line.match(/https?:\/\/[^\s'"<>]+/i)
+    if (!match) return null
+    let candidate = match[0]
+    const remainder = line.slice(line.indexOf(candidate) + candidate.length).trim()
+    let lookahead = index
+
+    while (!remainder && lookahead + 1 < lines.length) {
+      const nextLine = lines[lookahead + 1]
+      const token = nextLine.split(/\s+/)[0] ?? ''
+      const sanitized = token.replace(/[.,;:!?]+$/, '')
+      if (!sanitized) break
+      const lastChar = candidate[candidate.length - 1] ?? ''
+      const canContinue =
+        /[&=?\/:%\-+]$/.test(lastChar) || sanitized.includes('=') || sanitized.includes('&')
+      if (!canContinue) break
+      candidate += sanitized
+      lookahead++
+    }
+
+    return candidate.replace(/[.,;:!?]+$/, '')
+  }
+
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx]
     if (!url) {
-      const match = line.match(/https?:\/\/\S*authorize\S*/)
-      if (match) {
-        url = match[0]
+      const candidate = extractUrl(line, idx)
+      if (candidate) {
+        url = candidate
         if (!userCode) {
           try {
             const params = new URL(url).searchParams
             userCode = params.get('user_code')
           } catch (err) {
-            ;// ignore invalid url for now
+            ;// invalid URL, continue
           }
         }
       }
     }
+
     if (!userCode) {
-      const codeMatch = line.match(/enter the code\s+([A-Z0-9-]+)/i)
+      const codeMatch = line.match(/code[:\s]+([A-Z0-9-]+)/i)
       if (codeMatch) userCode = codeMatch[1]
     }
   }

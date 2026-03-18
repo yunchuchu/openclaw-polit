@@ -25,4 +25,50 @@ describe('parseOAuthOutput', () => {
     expect(result.userCode).toBeNull()
     expect(result.error).toBe('MISSING_FIELDS')
   })
+
+  it('handles authorize url split across lines', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&
+│  client=qwen-code to approve access.
+│  If prompted, enter the code Y0-LDRXQ.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
+
+  it('trims trailing punctuation from the url', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code.
+│  If prompted, enter the code Y0-LDRXQ.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
+
+  it('extracts user code from text-only lines', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code to approve access.
+│  Your code is Y0-LDRXQ.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
 })
