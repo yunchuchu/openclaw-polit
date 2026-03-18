@@ -24,10 +24,8 @@ export function parseOAuthOutput(output: string): {
       const token = nextLine.split(/\s+/)[0] ?? ''
       const sanitized = token.replace(/[.,;:!?]+$/, '')
       if (!sanitized) break
-      const lastChar = candidate[candidate.length - 1] ?? ''
-      const canContinue =
-        /[&=?\/:%\-+]$/.test(lastChar) || sanitized.includes('=') || sanitized.includes('&')
-      if (!canContinue) break
+      const shouldExtend = /^[?&]/.test(sanitized) || sanitized.includes('=')
+      if (!shouldExtend) break
       candidate += sanitized
       lookahead++
     }

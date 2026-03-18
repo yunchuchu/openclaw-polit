@@ -86,4 +86,19 @@ describe('parseOAuthOutput', () => {
     expect(result.userCode).toBe('QW-12345')
     expect(result.error).toBeNull()
   })
+
+  it('does not extend url when the next line is plain text', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?        
+│  This line is just an explanatory sentence.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize')
+    expect(result.userCode).toBeNull()
+    expect(result.error).toBe('MISSING_FIELDS')
+  })
 })
