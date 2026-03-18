@@ -19,7 +19,8 @@ const allowedCommands = [
   'powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable(\'PATH\',\'{path}\',\'Machine\')"',
   'powershell -NoProfile -Command "Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition \' [DllImport(\\\"user32.dll\\\")] public static extern int SendMessageTimeout(int hWnd,int Msg,int wParam,string lParam,int flags,int timeout,out int result); \' ; [Win32.NativeMethods]::SendMessageTimeout(0xffff,0x1A,0,\'Environment\',2,5000,[ref]0)"',
   'openclaw gateway run',
-  'openclaw dashboard --no-open'
+  'openclaw dashboard --no-open',
+  'openclaw models auth login --provider qwen'
 ]
 
 export function assertAllowedCommand(command: string) {
