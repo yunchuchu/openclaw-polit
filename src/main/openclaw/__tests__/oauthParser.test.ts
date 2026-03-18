@@ -132,6 +132,21 @@ describe('parseOAuthOutput', () => {
     expect(result.error).toBeNull()
   })
 
+  it('chooses authorize url with user_code when multiple authorize links exist', () => {
+    const output = `
+◑  Starting Qwen OAuth…
+
+◇  Qwen OAuth ────────────────────────────────────────────────────────────╮
+│  Open https://chat.qwen.ai/authorize?client=qwen-code to begin.
+│  Or try https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code if the first link fails.
+╰──────────────────────────────────────────────────────────────────────────╯
+`
+    const result = parseOAuthOutput(output)
+    expect(result.url).toBe('https://chat.qwen.ai/authorize?user_code=Y0-LDRXQ&client=qwen-code')
+    expect(result.userCode).toBe('Y0-LDRXQ')
+    expect(result.error).toBeNull()
+  })
+
   it('trims closing parentheses from the extracted url', () => {
     const output = `
 ◑  Starting Qwen OAuth…

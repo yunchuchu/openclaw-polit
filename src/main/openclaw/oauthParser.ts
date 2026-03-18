@@ -43,7 +43,7 @@ export function parseOAuthOutput(output: string): {
       .filter(Boolean)
   }
 
-  const candidates: Array<{ value: string; isAuthorizePath: boolean }> = []
+  const candidates: Array<{ value: string; isAuthorizePath: boolean; hasUserCode: boolean }> = []
   for (let idx = 0; idx < lines.length; idx++) {
     const lineCandidates = collectCandidatesFromLine(lines[idx], idx)
     for (const candidate of lineCandidates) {
@@ -54,12 +54,23 @@ export function parseOAuthOutput(output: string): {
           return false
         }
       })()
-      candidates.push({ value: candidate, isAuthorizePath })
+      const hasUserCode = (() => {
+        try {
+          return Boolean(new URL(candidate).searchParams.get('user_code'))
+        } catch {
+          return false
+        }
+      })()
+      candidates.push({ value: candidate, isAuthorizePath, hasUserCode })
     }
   }
 
-  const authorizeCandidate = candidates.find(c => c.isAuthorizePath)?.value ?? null
-  url = authorizeCandidate ?? candidates[0]?.value ?? null
+  const prioritizedCandidate =
+    candidates.find(c => c.isAuthorizePath && c.hasUserCode)?.value ??
+    candidates.find(c => c.isAuthorizePath)?.value ??
+    candidates[0]?.value ??
+    null
+  url = prioritizedCandidate
 
   if (url) {
     try {
