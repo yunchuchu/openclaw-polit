@@ -229,6 +229,38 @@ button.ghost {
   margin-bottom: 8px;
 }
 
+.auth-body {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-frame {
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  overflow: hidden;
+  height: 420px;
+  background: #fff;
+}
+
+.auth-webview {
+  width: 100%;
+  height: 100%;
+}
+
+.auth-code {
+  font-weight: 600;
+}
+
+.auth-success {
+  color: var(--teal);
+  font-weight: 600;
+}
+
+.auth-error {
+  color: #b3261e;
+  font-weight: 600;
+}
+
 .dashboard-shell {
   width: min(1200px, 96vw);
   height: min(860px, 90vh);
