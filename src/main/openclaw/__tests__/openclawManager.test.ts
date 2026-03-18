@@ -6,6 +6,7 @@ type MockProc = {
   _emit: (type: 'stdout' | 'stderr', data: string) => void
   _emitEvent: (event: 'error' | 'exit', payload?: unknown) => void
 }
+type OAuthUpdate = { url: string | null; userCode: string | null; error: string | null; chunk: string }
 
 const createMockProc = (): MockProc => {
   const listeners: Record<string, (payload?: unknown) => void> = {}
@@ -58,7 +59,7 @@ describe('startOAuthFlow', () => {
   })
 
   it('passes stdout and stderr chunks through to onUpdate', () => {
-    const updates: Array<{ url: string | null; userCode: string | null; error: string | null; chunk: string }> = []
+    const updates: OAuthUpdate[] = []
     const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
 
     proc._emit('stdout', 'Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
@@ -74,7 +75,7 @@ describe('startOAuthFlow', () => {
   })
 
   it('propagates error events via the chunk payload', () => {
-    const updates: Array<{ url: string | null; userCode: string | null; error: string | null; chunk: string }> = []
+    const updates: OAuthUpdate[] = []
     const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
 
     proc._emitEvent('error', new Error('boom'))
@@ -83,7 +84,7 @@ describe('startOAuthFlow', () => {
   })
 
   it('emits an empty chunk on exit', () => {
-    const updates: Array<{ url: string | null; userCode: string | null; error: string | null; chunk: string }> = []
+    const updates: OAuthUpdate[] = []
     const proc = startOAuthFlow((payload) => updates.push(payload)) as unknown as MockProc
 
     proc._emitEvent('exit')
