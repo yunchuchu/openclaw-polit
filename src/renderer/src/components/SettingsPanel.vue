@@ -1,17 +1,6 @@
 <template>
   <section class="settings-panel">
     <div class="panel-stack">
-      <div class="panel-section panel-header">
-        <div class="panel-title">
-          <img class="panel-logo" :src="openclawLogoUrl" alt="OpenClaw logo" />
-          <div>
-            <h2>设置中心</h2>
-            <p>管理本地安装、配置与卸载操作。</p>
-          </div>
-        </div>
-        <span class="status-chip">{{ statusLabel }}</span>
-      </div>
-
       <div class="panel-section settings-layout">
         <nav class="settings-nav" aria-label="设置功能">
           <button
@@ -362,7 +351,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, toRefs, watch } from 'vue'
-import { openclawLogoUrl } from '../assets/branding'
 import InstallPanel from './InstallPanel.vue'
 
 type UninstallState = 'idle' | 'running' | 'success' | 'error'
@@ -422,13 +410,6 @@ const settingsItems = [
 ]
 
 const isRunning = computed(() => uninstallState.value === 'running')
-const statusLabel = computed(() => {
-  if (uninstallState.value === 'running') return '正在卸载'
-  if (uninstallState.value === 'success') return '卸载完成'
-  if (uninstallState.value === 'error') return '卸载失败'
-  return '未执行'
-})
-
 const macScript = `# 1. 停止进程
 pkill -f "openclaw gateway" 2>/dev/null || true
 pkill -f "openclaw models" 2>/dev/null || true

@@ -73,7 +73,7 @@ button {
 }
 
 #app > div > div > section > main > section {
-  margin-top: 100px;
+  margin-top: 10px;
 }
 
 #app > div > div > section > main > section.dashboard-shell {
@@ -402,20 +402,21 @@ button {
   padding: 28px 32px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-start;
   gap: 24px;
   box-shadow: none;
 }
 
 .settings-panel .panel-stack {
-  width: min(980px, 100%);
+  width: min(1200px, 100%);
+  margin: 0 auto;
 }
 
 .settings-layout {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
@@ -424,9 +425,11 @@ button {
   gap: 10px;
   padding: 12px;
   border-radius: 18px;
-  background: var(--surface-muted);
+  background: rgba(255, 255, 255, 0.6);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .settings-nav-item {
@@ -459,12 +462,12 @@ button {
   color: var(--ink);
   background: var(--surface);
   border-color: rgba(22, 163, 74, 0.45);
-  box-shadow: inset 3px 0 0 var(--accent), var(--shadow-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .settings-nav-item.active.danger {
   border-color: rgba(220, 38, 38, 0.45);
-  box-shadow: inset 3px 0 0 var(--danger), var(--shadow-soft);
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 
 .settings-content {
@@ -490,7 +493,7 @@ button {
   padding: 20px 22px;
   display: grid;
   gap: 16px;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 .model-config-form {
