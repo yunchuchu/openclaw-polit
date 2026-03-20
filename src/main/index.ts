@@ -33,6 +33,12 @@ type PluginList = {
     providerIds?: string[]
   }>
 }
+type ModelConfigPayload = {
+  providerId: string
+  apiKey: string
+  baseUrl: string
+  defaultModel: string
+}
 
 type ExecFn = (cmd: string) => Promise<ExecResult>
 
@@ -69,6 +75,47 @@ function getPortableGitInstallDir() {
 function getLtsMajor(version: string) {
   const cleaned = version.replace(/^v/, '')
   return Number(cleaned.split('.')[0])
+}
+
+function shellEscape(value: string) {
+  const escaped = value.replace(/(["\\$`])/g, '\\$1').replace(/\r?\n/g, ' ')
+  return `"${escaped}"`
+}
+
+function parsePrimaryModel(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return { providerId: '', model: '' }
+  const [providerId, ...rest] = value.split('/')
+  return { providerId: providerId ?? '', model: rest.join('/') }
+}
+
+function pickProviderId(primaryProvider: string, providers: Record<string, any>) {
+  if (primaryProvider) return primaryProvider
+  const keys = Object.keys(providers ?? {})
+  return keys[0] ?? ''
+}
+
+function resolveProviderApi(providerId: string) {
+  const normalized = providerId.toLowerCase()
+  if (normalized === 'anthropic') return 'anthropic-messages'
+  if (normalized === 'gemini' || normalized === 'google-gemini' || normalized === 'google') {
+    return 'google-generative-ai'
+  }
+  return 'openai-completions'
+}
+
+function resolveDefaultBaseUrl(providerId: string) {
+  const normalized = providerId.toLowerCase()
+  const defaults: Record<string, string> = {
+    openai: 'https://api.openai.com/v1',
+    anthropic: 'https://api.anthropic.com',
+    deepseek: 'https://api.deepseek.com/v1',
+    moonshot: 'https://api.moonshot.cn/v1',
+    mistral: 'https://api.mistral.ai/v1',
+    gemini: 'https://generativelanguage.googleapis.com/v1beta',
+    qwen: 'https://portal.qwen.ai/v1',
+    'qwen-portal': 'https://portal.qwen.ai/v1'
+  }
+  return defaults[normalized] ?? ''
 }
 
 async function refreshPath(platform: NodeJS.Platform, exec: ExecFn) {
@@ -309,7 +356,10 @@ async function runAuthFlow(win: BrowserWindow) {
   })
 }
 
-async function runExternalAuthFlow(win: BrowserWindow) {
+async function runExternalAuthFlow(
+  win: BrowserWindow,
+  options: { autoOpen?: boolean; autoOpenFallbackMs?: number } = {}
+) {
   emitStep(win, 'Starting Qwen OAuth')
   const provider = await ensureQwenProvider(win)
   let opened = false
@@ -317,6 +367,9 @@ async function runExternalAuthFlow(win: BrowserWindow) {
   let capturedUrl: string | null = null
   let errorMessage: string | null = null
   let outputBuffer = ''
+  const autoOpen = options.autoOpen ?? true
+  const fallbackMs = options.autoOpenFallbackMs ?? 10000
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 
   return new Promise<{ opened: boolean; url: string | null; error?: string }>((resolve) => {
     const timeout = setTimeout(() => {
@@ -335,23 +388,44 @@ async function runExternalAuthFlow(win: BrowserWindow) {
         }
       }
       if (!opened && url) {
-        opened = true
+        opened = autoOpen
         capturedUrl = url
-        shell.openExternal(url)
+        if (autoOpen) {
+          shell.openExternal(url)
+        }
         if (!resolved) {
           resolved = true
           clearTimeout(timeout)
           resolve({ opened: true, url })
         }
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer)
+          fallbackTimer = null
+        }
       }
     })
 
     supervisor.track(authProc)
+
+    fallbackTimer = setTimeout(() => {
+      if (!opened && !resolved) {
+        win.webContents.send('auth:progress', {
+          url: null,
+          userCode: null,
+          message: '若未自动打开浏览器，请手动复制授权链接或重试。'
+        })
+      }
+    }, fallbackMs)
+
     authProc.on('exit', () => {
       if (!resolved) {
         resolved = true
         clearTimeout(timeout)
         resolve({ opened, url: capturedUrl, error: errorMessage ?? undefined })
+      }
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer)
+        fallbackTimer = null
       }
     })
   })
@@ -541,6 +615,108 @@ async function runUninstallFlow(win: BrowserWindow) {
   return { ok: true, logs }
 }
 
+async function runGetModelConfig() {
+  const parseJson = (stdout: string) => {
+    if (!stdout) return undefined
+    return JSON.parse(stdout)
+  }
+
+  const readConfigValue = async (path: string, allowMissing = false) => {
+    const result = await execCommand(`openclaw config get ${path} --json`)
+    if (result.code === 0) {
+      try {
+        return { ok: true as const, value: parseJson(result.stdout) }
+      } catch {
+        return { ok: false as const, error: '配置解析失败，请检查 openclaw config 输出。' }
+      }
+    }
+    const message = result.stderr || result.stdout || ''
+    if (allowMissing && message.includes('Config path not found')) {
+      return { ok: true as const, value: undefined }
+    }
+    return { ok: false as const, error: message || '读取配置失败。' }
+  }
+
+  const providersResult = await readConfigValue('models.providers', true)
+  if (!providersResult.ok) {
+    return { ok: false, error: providersResult.error }
+  }
+
+  const primaryResult = await readConfigValue('agents.defaults.model.primary', true)
+  if (!primaryResult.ok) {
+    return { ok: false, error: primaryResult.error }
+  }
+
+  const providers = providersResult.value && typeof providersResult.value === 'object'
+    ? (providersResult.value as Record<string, any>)
+    : {}
+  const primary =
+    typeof primaryResult.value === 'string' ? primaryResult.value : primaryResult.value ?? ''
+  const parsedPrimary = parsePrimaryModel(primary)
+  const providerId = pickProviderId(parsedPrimary.providerId, providers)
+  const providerConfig = providerId ? providers?.[providerId] ?? {} : {}
+
+  return {
+    ok: true,
+    data: {
+      providerId,
+      apiKey: providerConfig?.apiKey ?? '',
+      baseUrl: providerConfig?.baseUrl ?? '',
+      defaultModel: parsedPrimary.model ?? ''
+    }
+  }
+}
+
+async function runSaveModelConfig(payload: ModelConfigPayload) {
+  const providerId = payload.providerId?.trim()
+  if (!providerId) {
+    return { ok: false, error: '请先选择或填写 provider id。' }
+  }
+  if (!/^[a-zA-Z0-9._-]+$/.test(providerId)) {
+    return { ok: false, error: 'provider id 仅支持字母、数字、点、下划线与中划线。' }
+  }
+
+  const defaultModel = payload.defaultModel?.trim()
+  if (!defaultModel) {
+    return { ok: false, error: '请填写默认模型名称。' }
+  }
+
+  const apiKey = payload.apiKey?.trim() ?? ''
+  const baseUrlInput = payload.baseUrl?.trim() ?? ''
+  const resolvedBaseUrl = baseUrlInput || resolveDefaultBaseUrl(providerId)
+  if (!resolvedBaseUrl) {
+    return { ok: false, error: 'Base URL 不能为空，请填写完整的 API 地址。' }
+  }
+
+  const providerConfig: Record<string, any> = {
+    baseUrl: resolvedBaseUrl,
+    api: resolveProviderApi(providerId),
+    models: [{ id: defaultModel, name: defaultModel }]
+  }
+  if (apiKey) {
+    providerConfig.apiKey = apiKey
+  }
+
+  const commands = [
+    `openclaw config set models.providers.${providerId} ${shellEscape(JSON.stringify(providerConfig))}`,
+    `openclaw config set agents.defaults.model.primary ${shellEscape(`${providerId}/${defaultModel}`)}`
+  ]
+
+  for (const command of commands) {
+    const result = await execCommand(command)
+    if (result.code !== 0) {
+      return { ok: false, error: result.stderr || result.stdout || '保存配置失败。' }
+    }
+  }
+
+  const validate = await execCommand('openclaw config validate')
+  if (validate.code !== 0) {
+    return { ok: false, error: validate.stderr || validate.stdout || '配置校验失败。' }
+  }
+
+  return { ok: true }
+}
+
 function createWindow() {
   const preloadJs = join(__dirname, '../preload/index.js')
   const preloadMjs = join(__dirname, '../preload/index.mjs')
@@ -594,7 +770,11 @@ function createWindow() {
     startGateway: async () => runGatewayFlow(win),
     startUninstall: async () => runUninstallFlow(win),
     startupBootstrap: async () => runStartupBootstrap(win),
-    getLogs
+    getLogs,
+    getModelConfig: async () => runGetModelConfig(),
+    saveModelConfig: async (payload) => runSaveModelConfig(payload),
+    startQwenAuth: async () =>
+      runExternalAuthFlow(win, { autoOpen: false, autoOpenFallbackMs: 10000 })
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {

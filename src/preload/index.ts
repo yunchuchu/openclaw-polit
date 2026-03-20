@@ -13,6 +13,14 @@ contextBridge.exposeInMainWorld('openclaw', {
   startGateway: () => ipcRenderer.invoke('gateway:start'),
   uninstall: () => ipcRenderer.invoke('uninstall:run'),
   getLogs: () => ipcRenderer.invoke('installer:getLogs'),
+  getModelConfig: () => ipcRenderer.invoke('model-config:get'),
+  saveModelConfig: (payload: {
+    providerId: string
+    apiKey: string
+    baseUrl: string
+    defaultModel: string
+  }) => ipcRenderer.invoke('model-config:save', payload),
+  startQwenAuth: () => ipcRenderer.invoke('model-config:qwen-auth'),
   onLog: (cb: (msg: string) => void) => ipcRenderer.on('installer:log', (_, msg) => cb(msg)),
   onStep: (cb: (step: string) => void) => ipcRenderer.on('installer:step', (_, step) => cb(step)),
   onError: (cb: (payload: { code: string; message: string }) => void) =>

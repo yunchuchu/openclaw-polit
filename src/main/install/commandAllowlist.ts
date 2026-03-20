@@ -29,6 +29,11 @@ const allowedCommands = [
   'openclaw gateway run',
   'openclaw dashboard --no-open',
   'openclaw models auth login --provider qwen',
+  'openclaw models auth login --provider qwen-portal',
+  'openclaw config get',
+  'openclaw config set',
+  'openclaw config unset',
+  'openclaw config validate',
 ]
 
 export function assertAllowedCommand(command: string) {
