@@ -55,10 +55,11 @@ export async function getDashboardUrl(
 }
 
 export function startOAuthFlow(
+  provider: string,
   onUpdate: (data: { url: string | null; userCode: string | null; error: string | null; chunk: string }) => void
 ): OAuthProcess {
   ensurePtyHelperExecutable()
-  const proc = nodePty.spawn('openclaw', ['models', 'auth', 'login', '--provider', 'qwen'], {
+  const proc = nodePty.spawn('openclaw', ['models', 'auth', 'login', '--provider', provider], {
     name: 'xterm-color',
     cols: 80,
     rows: 24,

@@ -44,7 +44,7 @@ describe('startOAuthFlow', () => {
   })
 
   it('spawns with the expected command, args, and options', () => {
-    startOAuthFlow(() => undefined)
+    startOAuthFlow('qwen', () => undefined)
 
     expect(mockSpawn).toHaveBeenCalledTimes(1)
     const [cmd, args, options] = mockSpawn.mock.calls[0] ?? []
@@ -55,7 +55,7 @@ describe('startOAuthFlow', () => {
 
   it('passes data chunks through to onUpdate', () => {
     const updates: OAuthUpdate[] = []
-    startOAuthFlow((payload) => updates.push(payload))
+    startOAuthFlow('qwen', (payload) => updates.push(payload))
     const pty = mockSpawn.mock.results[0]?.value as MockPty
 
     pty._emitData('Open https://chat.qwen.ai/authorize?user_code=TEST&client=qwen-code')
@@ -72,7 +72,7 @@ describe('startOAuthFlow', () => {
 
   it('emits an empty chunk on exit', () => {
     const updates: OAuthUpdate[] = []
-    const proc = startOAuthFlow((payload) => updates.push(payload))
+    const proc = startOAuthFlow('qwen', (payload) => updates.push(payload))
     const pty = mockSpawn.mock.results[0]?.value as MockPty
     let exitCode: number | null = null
     proc.on('exit', (code) => {

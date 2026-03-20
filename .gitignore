@@ -3,4 +3,5 @@
 node_modules/
 .playwright-cli/
 out/
+output/
 .superpowers/

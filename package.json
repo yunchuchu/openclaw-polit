@@ -38,6 +38,10 @@
       {
         "from": "resources/portable-git/windows",
         "to": "portable-git/windows"
+      },
+      {
+        "from": "resources/images",
+        "to": "images"
       }
     ]
   }

@@ -8,19 +8,18 @@
           <p>Gateway installer</p>
         </div>
       </div>
-      <div class="status-pill">{{ current || 'Ready' }}</div>
+      <div class="status-pill">{{ current || '准备就绪' }}</div>
     </header>
 
-    <StepList :steps="steps" :current="current" />
-
-    <div class="log-summary">
+    <div ref="logRef" class="log-summary">
       <p v-for="(line, index) in logSummary" :key="`${line}-${index}`">{{ line }}</p>
-      <p v-if="!logSummary.length" class="log-placeholder">Logs will appear here as the setup runs.</p>
+      <p v-if="!logSummary.length" class="log-placeholder">安装日志会显示在这里。</p>
     </div>
 
     <div v-if="error" class="error">
-      <div class="error-title">Installation halted</div>
-      <p>{{ error.message }}</p>
+      <p class="error-title">安装失败</p>
+      <p>安装失败，请检查网络或权限后重试。</p>
+      <p class="error-detail">{{ error.message }}</p>
       <div class="error-actions">
         <button class="primary" @click="emit('retry')">重试</button>
         <button class="ghost" @click="emit('copyLogs')">复制日志</button>
@@ -29,18 +28,16 @@
 
     <div v-else class="actions">
       <button class="primary" @click="emit('start')" :disabled="started">
-        {{ started ? '安装中…' : '开始安装' }}
+        <span class="btn-label" :class="{ 'is-hidden': started }">{{ started ? '安装中…' : '开始安装' }}</span>
       </button>
-      <button v-if="started" class="ghost" @click="emit('copyLogs')">复制日志</button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import StepList from './StepList.vue'
+import { nextTick, ref, watch } from 'vue'
 
-defineProps<{ 
-  steps: string[]
+const props = defineProps<{
   current: string
   logSummary: string[]
   error: { code: string; message: string } | null
@@ -52,4 +49,17 @@ const emit = defineEmits<{
   (event: 'retry'): void
   (event: 'copyLogs'): void
 }>()
+
+const logRef = ref<HTMLElement | null>(null)
+
+watch(
+  () => props.logSummary,
+  async () => {
+    await nextTick()
+    if (logRef.value) {
+      logRef.value.scrollTop = logRef.value.scrollHeight
+    }
+  },
+  { deep: true }
+)
 </script>

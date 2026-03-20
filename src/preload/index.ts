@@ -5,10 +5,13 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 contextBridge.exposeInMainWorld('openclaw', {
+  startupBootstrap: () => ipcRenderer.invoke('startup:bootstrap'),
   startInstall: () => ipcRenderer.invoke('installer:start'),
   retryInstall: () => ipcRenderer.invoke('installer:retry'),
   startAuth: () => ipcRenderer.invoke('auth:start'),
+  startExternalAuth: () => ipcRenderer.invoke('auth:external'),
   startGateway: () => ipcRenderer.invoke('gateway:start'),
+  uninstall: () => ipcRenderer.invoke('uninstall:run'),
   getLogs: () => ipcRenderer.invoke('installer:getLogs'),
   onLog: (cb: (msg: string) => void) => ipcRenderer.on('installer:log', (_, msg) => cb(msg)),
   onStep: (cb: (step: string) => void) => ipcRenderer.on('installer:step', (_, step) => cb(step)),
@@ -23,6 +26,7 @@ contextBridge.exposeInMainWorld('openclaw', {
     ipcRenderer.on('auth:error', (_, payload) => cb(payload)),
   onGatewayReady: (cb: (payload: { dashboardUrl: string }) => void) =>
     ipcRenderer.on('gateway:ready', (_, payload) => cb(payload)),
+  onUninstallLog: (cb: (msg: string) => void) => ipcRenderer.on('uninstall:log', (_, msg) => cb(msg)),
   onSuccess: (cb: (payload: { dashboardUrl: string }) => void) =>
     ipcRenderer.on('installer:success', (_, payload) => cb(payload))
 })
