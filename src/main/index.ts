@@ -19,7 +19,7 @@ import {
   resolveNodeInstallerUrl
 } from './install/installer'
 import { ensureWindowsNpmPath, installOpenClawGlobal } from './openclaw/npmGlobal'
-import { getDashboardUrl, startGateway, startOAuthFlow } from './openclaw/openclawManager'
+import { getDashboardUrl, hasDashboardToken, startGateway, startOAuthFlow } from './openclaw/openclawManager'
 
 const supervisor = new ProcessSupervisor()
 let currentDashboardUrl: string | null = null
@@ -42,12 +42,78 @@ type ModelConfigPayload = {
 
 type ExecFn = (cmd: string) => Promise<ExecResult>
 
+const makeTokenError = (code: string, message: string) => {
+  const error = new Error(message) as Error & { code?: string }
+  error.code = code
+  return error
+}
+
 function resolvePortableGitArchive() {
   const filename = 'PortableGit-2.53.0.2-64-bit.7z.exe'
   if (app.isPackaged) {
     return join(process.resourcesPath, 'portable-git', 'windows', filename)
   }
   return join(app.getAppPath(), 'resources', 'portable-git', 'windows', filename)
+}
+
+async function resolveDashboardUrlWithToken(exec: ExecFn, win?: BrowserWindow) {
+  let dashboardUrl: string
+  try {
+    if (win) emitStep(win, 'Fetching Dashboard URL')
+    dashboardUrl = await getDashboardUrl(exec)
+  } catch (error: any) {
+    throw makeTokenError('DASHBOARD_URL_MISSING', error?.message || '未获取到控制台地址，请先完成授权。')
+  }
+
+  if (hasDashboardToken(dashboardUrl)) {
+    return { dashboardUrl, generated: false }
+  }
+
+  if (win) emitStep(win, 'Generating Gateway Token')
+  const generateResult = await exec('openclaw doctor --generate-gateway-token')
+  if (generateResult.code !== 0) {
+    const reason = generateResult.stderr || generateResult.stdout || '生成 token 失败。'
+    throw makeTokenError('TOKEN_GENERATE_FAILED', reason)
+  }
+
+  try {
+    if (win) emitStep(win, 'Fetching Dashboard URL')
+    dashboardUrl = await getDashboardUrl(exec)
+  } catch (error: any) {
+    throw makeTokenError('DASHBOARD_URL_MISSING', error?.message || '未获取到控制台地址，请先完成授权。')
+  }
+
+  if (!hasDashboardToken(dashboardUrl)) {
+    throw makeTokenError('TOKEN_MISSING', '未检测到控制台 token，请先完成授权。')
+  }
+
+  return { dashboardUrl, generated: true }
+}
+
+async function ensureGatewayMode(exec: ExecFn, win?: BrowserWindow) {
+  if (win) emitStep(win, 'Ensuring Gateway Mode')
+  const result = await exec('openclaw config get gateway.mode --json')
+  if (result.code === 0) {
+    try {
+      const value = JSON.parse(result.stdout)
+      if (typeof value === 'string' && value.trim()) {
+        return { ok: true as const, updated: false as const, value }
+      }
+    } catch {
+      // ignore parse error and treat as missing
+    }
+  } else {
+    const message = (result.stderr || result.stdout || '').toLowerCase()
+    if (message && !message.includes('config path not found') && !message.includes('not found')) {
+      throw makeTokenError('GATEWAY_MODE_FAILED', result.stderr || result.stdout || '读取 gateway.mode 失败。')
+    }
+  }
+
+  const setResult = await exec('openclaw config set gateway.mode local')
+  if (setResult.code !== 0) {
+    throw makeTokenError('GATEWAY_MODE_FAILED', setResult.stderr || setResult.stdout || '设置 gateway.mode 失败。')
+  }
+  return { ok: true as const, updated: true as const, value: 'local' }
 }
 
 function resolveAppIconPath() {
@@ -270,6 +336,15 @@ async function runInstallFlow(win: BrowserWindow) {
 
     await refreshPath(platform, exec)
 
+    try {
+      const modeResult = await ensureGatewayMode(exec, win)
+      if (modeResult.updated) {
+        emitLog(win, '已自动设置 gateway.mode=local')
+      }
+    } catch (error: any) {
+      emitLog(win, error?.message || '自动设置 gateway.mode 失败，请手动配置。')
+    }
+
     // 安装完成后不自动启动 Gateway，由用户手动触发后续授权/启动流程
     win.webContents.send('installer:done')
   } catch (error: any) {
@@ -292,7 +367,23 @@ async function runStartupBootstrap(win: BrowserWindow) {
   const exec = (cmd: string) => execCommand(cmd, win)
   const versionResult = await exec('openclaw -v')
   if (versionResult.code !== 0) {
-    return { installed: false as const }
+    return { installed: false as const, tokenReady: false as const }
+  }
+
+  let dashboardUrl: string
+  try {
+    await ensureGatewayMode(exec, win)
+    const result = await resolveDashboardUrlWithToken(exec, win)
+    dashboardUrl = result.dashboardUrl
+  } catch (error: any) {
+    return {
+      installed: true as const,
+      tokenReady: false as const,
+      error: {
+        code: error?.code || 'TOKEN_MISSING',
+        message: error?.message || '未检测到控制台 token，请先完成授权。'
+      }
+    }
   }
 
   try {
@@ -302,12 +393,12 @@ async function runStartupBootstrap(win: BrowserWindow) {
     gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
     gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
 
-    emitStep(win, 'Fetching Dashboard URL')
-    currentDashboardUrl = await getDashboardUrl(exec)
-    return { installed: true as const, dashboardUrl: currentDashboardUrl }
+    currentDashboardUrl = dashboardUrl
+    return { installed: true as const, tokenReady: true as const, dashboardUrl }
   } catch (error: any) {
     return {
       installed: true as const,
+      tokenReady: true as const,
       error: {
         code: 'GATEWAY_BOOTSTRAP_FAILED',
         message: error?.message || 'Failed to start gateway.'
@@ -489,15 +580,31 @@ async function ensureQwenProvider(win: BrowserWindow) {
 async function runGatewayFlow(win: BrowserWindow) {
   const exec = (cmd: string) => execCommand(cmd, win)
 
+  await ensureGatewayMode(exec, win)
+  const { dashboardUrl } = await resolveDashboardUrlWithToken(exec, win)
+
   emitStep(win, 'Starting Gateway')
   const gateway = await startGateway()
   supervisor.track(gateway)
   gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
   gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
 
-  emitStep(win, 'Fetching Dashboard URL')
-  currentDashboardUrl = await getDashboardUrl(exec)
-  win.webContents.send('gateway:ready', { dashboardUrl: currentDashboardUrl })
+  currentDashboardUrl = dashboardUrl
+  win.webContents.send('gateway:ready', { dashboardUrl })
+}
+
+async function runEnsureGatewayToken(win: BrowserWindow) {
+  const exec = (cmd: string) => execCommand(cmd, win)
+  try {
+    await ensureGatewayMode(exec, win)
+    const { dashboardUrl } = await resolveDashboardUrlWithToken(exec, win)
+    return { ok: true as const, dashboardUrl }
+  } catch (error: any) {
+    return {
+      ok: false as const,
+      error: error?.message || '未检测到控制台 token，请先完成授权。'
+    }
+  }
 }
 
 async function runUninstallFlow(win: BrowserWindow) {
@@ -768,6 +875,7 @@ function createWindow() {
     startAuth: async () => runAuthFlow(win),
     startExternalAuth: async () => runExternalAuthFlow(win),
     startGateway: async () => runGatewayFlow(win),
+    ensureGatewayToken: async () => runEnsureGatewayToken(win),
     startUninstall: async () => runUninstallFlow(win),
     startupBootstrap: async () => runStartupBootstrap(win),
     getLogs,

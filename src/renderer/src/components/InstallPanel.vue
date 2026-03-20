@@ -25,10 +25,12 @@
 
         <div v-else-if="stage === 'install-success'" class="success-card">
           <div class="success-title">恭喜安装成功</div>
-          <p class="success-desc">接下来可以授权 Qwen 模型，或者直接进入控制台。</p>
+          <p class="success-desc">请先完成模型配置，再手动启动控制台。</p>
           <div class="action-row">
-            <button class="btn ghost" type="button" @click="emit('start-auth')">授权 Qwen</button>
-            <button class="btn primary" type="button" @click="emit('start-gateway')">直接启动</button>
+            <button class="btn ghost" type="button" @click="emit('go-model-api')">
+              Qwen自动授权/API手动配置
+            </button>
+            <button class="btn primary" type="button" @click="emit('start-gateway')">启动控制台</button>
           </div>
           <p v-if="authNotice" class="success-note">{{ authNotice }}</p>
         </div>
@@ -82,7 +84,7 @@ const emit = defineEmits<{
   (event: 'start'): void
   (event: 'retry'): void
   (event: 'copy-logs'): void
-  (event: 'start-auth'): void
+  (event: 'go-model-api'): void
   (event: 'start-gateway'): void
 }>()
 

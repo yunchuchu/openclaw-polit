@@ -6,9 +6,11 @@ export function registerIpcHandlers(handlers: {
   startAuth: () => Promise<void>
   startExternalAuth: () => Promise<{ opened: boolean; url: string | null; error?: string }>
   startGateway: () => Promise<void>
+  ensureGatewayToken: () => Promise<{ ok: boolean; dashboardUrl?: string; error?: string }>
   startUninstall: () => Promise<{ ok: boolean; logs: string[]; error?: string }>
   startupBootstrap: () => Promise<{
     installed: boolean
+    tokenReady?: boolean
     dashboardUrl?: string
     error?: { code: string; message: string }
   }>
@@ -22,6 +24,7 @@ export function registerIpcHandlers(handlers: {
   ipcMain.handle('auth:start', handlers.startAuth)
   ipcMain.handle('auth:external', handlers.startExternalAuth)
   ipcMain.handle('gateway:start', handlers.startGateway)
+  ipcMain.handle('gateway:ensure-token', handlers.ensureGatewayToken)
   ipcMain.handle('uninstall:run', handlers.startUninstall)
   ipcMain.handle('startup:bootstrap', handlers.startupBootstrap)
   ipcMain.handle('installer:getLogs', handlers.getLogs)

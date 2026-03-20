@@ -18,9 +18,9 @@
             v-for="item in settingsItems"
             :key="item.id"
             class="settings-nav-item"
-            :class="{ active: activeSection === item.id, danger: item.tone === 'danger' }"
+            :class="{ active: currentSection === item.id, danger: item.tone === 'danger' }"
             type="button"
-            :aria-current="activeSection === item.id ? 'page' : undefined"
+            :aria-current="currentSection === item.id ? 'page' : undefined"
             @click="selectSection(item.id)"
           >
             {{ item.label }}
@@ -28,7 +28,28 @@
         </nav>
 
         <div class="settings-content">
-          <div v-show="activeSection === 'uninstall'" class="settings-section">
+          <div v-show="currentSection === 'basic-config'" class="settings-section">
+            <div v-if="basicConfigError" class="error-card">
+              <p class="error-title">启动未完成</p>
+              <p class="error-desc">{{ basicConfigError.message }}</p>
+            </div>
+            <InstallPanel
+              :stage="installStage"
+              :current-step="installCurrentStep"
+              :log-summary="installLogSummary"
+              :error="installError"
+              :started="installStarted"
+              :progress="installProgress"
+              :auth-notice="installAuthNotice"
+              @start="emit('start-install')"
+              @retry="emit('retry-install')"
+              @copy-logs="emit('copy-logs')"
+              @go-model-api="selectSection('model-api')"
+              @start-gateway="emit('start-gateway')"
+            />
+          </div>
+
+          <div v-show="currentSection === 'uninstall'" class="settings-section">
             <div class="settings-card danger-card">
               <div class="settings-card-header">
                 <div>
@@ -133,7 +154,7 @@
             </div>
           </div>
 
-          <div v-show="activeSection === 'model-api'" class="settings-section">
+          <div v-show="currentSection === 'model-api'" class="settings-section">
             <div class="settings-card">
               <div class="settings-card-header">
                 <div>
@@ -304,7 +325,7 @@
             </div>
           </div>
 
-          <div v-show="activeSection === 'reset-config'" class="settings-section">
+          <div v-show="currentSection === 'reset-config'" class="settings-section">
             <div class="settings-card">
               <div class="settings-card-header">
                 <div>
@@ -319,7 +340,7 @@
             </div>
           </div>
 
-          <div v-show="activeSection === 'shutdown-restart'" class="settings-section">
+          <div v-show="currentSection === 'shutdown-restart'" class="settings-section">
             <div class="settings-card">
               <div class="settings-card-header">
                 <div>
@@ -340,25 +361,60 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, toRefs, watch } from 'vue'
 import { openclawLogoUrl } from '../assets/branding'
+import InstallPanel from './InstallPanel.vue'
 
 type UninstallState = 'idle' | 'running' | 'success' | 'error'
 type SaveState = 'idle' | 'saving' | 'success' | 'error'
 type QwenAuthState = 'idle' | 'running' | 'success' | 'error'
 type QwenSaveState = 'idle' | 'saving' | 'success' | 'error'
+type InstallStage = 'install' | 'installing' | 'install-success'
+type InstallError = { code: string; message: string }
 
 const openclaw = (window as any).openclaw
 
-type SettingsSectionId = 'uninstall' | 'model-api' | 'reset-config' | 'shutdown-restart'
+type SettingsSectionId = 'basic-config' | 'uninstall' | 'model-api' | 'reset-config' | 'shutdown-restart'
+
+const props = defineProps<{
+  activeSection?: SettingsSectionId
+  basicConfigError?: InstallError | null
+  installStage: InstallStage
+  installCurrentStep: string
+  installLogSummary: string[]
+  installError: InstallError | null
+  installStarted: boolean
+  installProgress: number
+  installAuthNotice: string | null
+}>()
+
+const emit = defineEmits<{
+  (event: 'update:activeSection', value: SettingsSectionId): void
+  (event: 'start-install'): void
+  (event: 'retry-install'): void
+  (event: 'copy-logs'): void
+  (event: 'start-gateway'): void
+}>()
+
+const {
+  basicConfigError,
+  installStage,
+  installCurrentStep,
+  installLogSummary,
+  installError,
+  installStarted,
+  installProgress,
+  installAuthNotice
+} = toRefs(props)
 
 const uninstallState = ref<UninstallState>('idle')
 const uninstallLogs = ref<string[]>([])
 const uninstallError = ref<string | null>(null)
 const confirming = ref(false)
 const showManual = ref(false)
-const activeSection = ref<SettingsSectionId>('uninstall')
+const currentSection = ref<SettingsSectionId>(props.activeSection ?? 'basic-config')
 const settingsItems = [
+  { id: 'basic-config', label: '基础配置' },
   { id: 'uninstall', label: 'openclaw 卸载', tone: 'danger' },
   { id: 'model-api', label: '模型API配置' },
   { id: 'reset-config', label: '重置配置文件' },
@@ -489,10 +545,20 @@ const effectiveProviderId = computed(() =>
 const saveDisabled = computed(() => modelSaveState.value === 'saving' || modelConfigLoading.value)
 
 const selectSection = (id: SettingsSectionId) => {
-  activeSection.value = id
+  currentSection.value = id
+  emit('update:activeSection', id)
   confirming.value = false
   showManual.value = false
 }
+
+watch(
+  () => props.activeSection,
+  (value) => {
+    if (value && value !== currentSection.value) {
+      currentSection.value = value
+    }
+  }
+)
 
 const startUninstall = async () => {
   if (!openclaw?.uninstall) {

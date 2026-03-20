@@ -22,4 +22,8 @@ describe('commandAllowlist', () => {
     expect(() => assertAllowedCommand('openclaw config unset models.providers.qwen.baseUrl')).not.toThrow()
     expect(() => assertAllowedCommand('openclaw config validate')).not.toThrow()
   })
+
+  it('allows openclaw doctor token generation', () => {
+    expect(() => assertAllowedCommand('openclaw doctor --generate-gateway-token')).not.toThrow()
+  })
 })

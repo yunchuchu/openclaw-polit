@@ -28,6 +28,7 @@ const allowedCommands = [
   'openclaw -v',
   'openclaw gateway run',
   'openclaw dashboard --no-open',
+  'openclaw doctor --generate-gateway-token',
   'openclaw models auth login --provider qwen',
   'openclaw models auth login --provider qwen-portal',
   'openclaw config get',

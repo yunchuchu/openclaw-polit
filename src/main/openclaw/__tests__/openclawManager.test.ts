@@ -34,7 +34,7 @@ vi.mock('node-pty', () => ({
   spawn: vi.fn(() => createMockPty())
 }))
 
-import { startOAuthFlow } from '../openclawManager'
+import { hasDashboardToken, startOAuthFlow } from '../openclawManager'
 import { spawn as ptySpawn } from 'node-pty'
 const mockSpawn = vi.mocked(ptySpawn)
 
@@ -81,5 +81,23 @@ describe('startOAuthFlow', () => {
     pty._emitExit(0)
     expect(updates.at(-1)?.chunk).toBe('')
     expect(exitCode).toBe(0)
+  })
+})
+
+describe('hasDashboardToken', () => {
+  it('detects token in hash', () => {
+    expect(hasDashboardToken('http://127.0.0.1:18789/#token=abc123')).toBe(true)
+  })
+
+  it('detects token in query', () => {
+    expect(hasDashboardToken('http://127.0.0.1:18789/?token=abc123')).toBe(true)
+  })
+
+  it('returns false when token is missing', () => {
+    expect(hasDashboardToken('http://127.0.0.1:18789/#view=home')).toBe(false)
+  })
+
+  it('returns false for empty input', () => {
+    expect(hasDashboardToken(null)).toBe(false)
   })
 })

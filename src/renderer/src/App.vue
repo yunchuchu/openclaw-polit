@@ -5,19 +5,22 @@
       <SplashView v-if="stage === 'splash'" />
       <HomeShell v-else :active="activePanel" :disabled="installLocked" @select="selectPanel">
         <template #main>
-          <InstallPanel
-            v-if="isInstallStage"
-            :stage="installStage"
-            :current-step="currentStep"
-            :log-summary="logSummary"
-            :error="error"
-            :started="started"
-            :progress="progressValue"
-            :auth-notice="authNotice"
-            @start="startInstall"
-            @retry="retryInstall"
+          <DashboardView v-if="stage === 'home'" :url="dashboardUrl" :loading="gatewayStarting" />
+          <SettingsPanel
+            v-else-if="stage === 'settings'"
+            :active-section="settingsSection"
+            :basic-config-error="basicConfigError"
+            :install-stage="installStage"
+            :install-current-step="currentStep"
+            :install-log-summary="logSummary"
+            :install-error="error"
+            :install-started="started"
+            :install-progress="progressValue"
+            :install-auth-notice="authNotice"
+            @update:active-section="settingsSection = $event"
+            @start-install="startInstall"
+            @retry-install="retryInstall"
             @copy-logs="copyLogs"
-            @start-auth="startExternalAuth"
             @start-gateway="startGateway"
           />
           <HomeErrorCard
@@ -26,12 +29,6 @@
             :starting="gatewayStarting"
             @retry="startGateway"
           />
-          <DashboardView
-            v-else-if="stage === 'home'"
-            :url="dashboardUrl"
-            :loading="gatewayStarting"
-          />
-          <SettingsPanel v-else-if="stage === 'settings'" />
           <PlaceholderPanel
             v-else
             :title="'安装 Skill 插件'"
@@ -48,17 +45,15 @@ import { computed, onMounted, ref } from 'vue'
 import SplashView from './components/SplashView.vue'
 import TopBar from './components/TopBar.vue'
 import HomeShell from './components/HomeShell.vue'
-import InstallPanel from './components/InstallPanel.vue'
 import HomeErrorCard from './components/HomeErrorCard.vue'
 import PlaceholderPanel from './components/PlaceholderPanel.vue'
 import DashboardView from './components/DashboardView.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 
 type InstallError = { code: string; message: string }
+type SettingsSectionId = 'basic-config' | 'uninstall' | 'model-api' | 'reset-config' | 'shutdown-restart'
 
-const stage = ref<
-  'splash' | 'install' | 'installing' | 'install-success' | 'home' | 'home-error' | 'skill' | 'settings'
->('splash')
+const stage = ref<'splash' | 'home' | 'home-error' | 'skill' | 'settings'>('splash')
 const currentStep = ref('准备就绪')
 const logs = ref<string[]>([])
 const error = ref<InstallError | null>(null)
@@ -68,15 +63,12 @@ const dashboardUrl = ref<string | null>(null)
 const progressValue = ref(0)
 const authNotice = ref<string | null>(null)
 const gatewayStarting = ref(false)
+const installStage = ref<'install' | 'installing' | 'install-success'>('install')
+const settingsSection = ref<SettingsSectionId>('basic-config')
+const basicConfigError = ref<InstallError | null>(null)
 
 const logSummary = computed(() => logs.value)
-const isInstallStage = computed(() =>
-  stage.value === 'install' || stage.value === 'installing' || stage.value === 'install-success'
-)
-const installStage = computed<'install' | 'installing' | 'install-success'>(() =>
-  isInstallStage.value ? stage.value : 'install'
-)
-const installLocked = computed(() => isInstallStage.value)
+const installLocked = computed(() => installStage.value === 'installing')
 const activePanel = computed(() => {
   if (stage.value === 'skill') return 'skill'
   if (stage.value === 'settings') return 'settings'
@@ -118,13 +110,25 @@ const mapStepToLog = (step: string) => {
 const resetInstallState = () => {
   logs.value = ['正在检测本机环境…', '准备读取系统依赖清单…']
   error.value = null
+  basicConfigError.value = null
   currentStep.value = 'Checking environment'
   progressValue.value = 6
 }
 
+const showBasicConfig = (payload: InstallError | null = null) => {
+  stage.value = 'settings'
+  settingsSection.value = 'basic-config'
+  basicConfigError.value = payload
+}
+
+const hasDashboardToken = (url: string | null) => {
+  if (!url) return false
+  return /(^|[#?&])token=/.test(url)
+}
+
 const startInstall = async () => {
   if (!openclaw) return
-  stage.value = 'installing'
+  installStage.value = 'installing'
   started.value = true
   authNotice.value = null
   resetInstallState()
@@ -132,13 +136,14 @@ const startInstall = async () => {
     await openclaw.startInstall()
   } catch (err: any) {
     error.value = { code: 'START_FAILED', message: err?.message || '启动失败。' }
-    stage.value = 'install'
+    installStage.value = 'install'
+    showBasicConfig()
   }
 }
 
 const retryInstall = async () => {
   if (!openclaw) return
-  stage.value = 'installing'
+  installStage.value = 'installing'
   started.value = true
   authNotice.value = null
   resetInstallState()
@@ -146,24 +151,36 @@ const retryInstall = async () => {
     await openclaw.retryInstall()
   } catch (err: any) {
     error.value = { code: 'RETRY_FAILED', message: err?.message || '重试失败。' }
-    stage.value = 'install'
+    installStage.value = 'install'
+    showBasicConfig()
   }
 }
 
-const startExternalAuth = async () => {
-  if (!openclaw) return
+const ensureGatewayToken = async () => {
+  if (!openclaw?.ensureGatewayToken) return
   authNotice.value = null
   try {
-    const result = await openclaw.startExternalAuth()
-    if (result?.opened) {
-      authNotice.value = '已为你打开浏览器授权，请完成授权后返回继续启动。'
-    } else if (result?.error) {
-      authNotice.value = result.error
-    } else {
-      authNotice.value = '未能自动打开浏览器，请稍后重试。'
+    const result = await openclaw.ensureGatewayToken()
+    if (!result?.ok) {
+      basicConfigError.value = {
+        code: 'TOKEN_GENERATE_FAILED',
+        message: result?.error || '未检测到控制台 token，请先完成授权。'
+      }
+      return
     }
+    if (!hasDashboardToken(result.dashboardUrl ?? null)) {
+      basicConfigError.value = {
+        code: 'TOKEN_MISSING',
+        message: '未检测到控制台 token，请先完成授权。'
+      }
+      return
+    }
+    authNotice.value = '已自动准备启动 token，可继续配置模型后启动控制台。'
   } catch (err: any) {
-    authNotice.value = err?.message || '授权启动失败，请稍后再试。'
+    basicConfigError.value = {
+      code: 'TOKEN_GENERATE_FAILED',
+      message: err?.message || '未检测到控制台 token，请先完成授权。'
+    }
   }
 }
 
@@ -172,13 +189,13 @@ const startGateway = async () => {
   homeError.value = null
   gatewayStarting.value = true
   dashboardUrl.value = null
+  basicConfigError.value = null
   stage.value = 'home'
   try {
     await openclaw.startGateway()
   } catch (err: any) {
     gatewayStarting.value = false
-    homeError.value = { code: 'GATEWAY_START_FAILED', message: err?.message || '启动失败。' }
-    stage.value = 'home-error'
+    showBasicConfig({ code: 'GATEWAY_START_FAILED', message: err?.message || '启动失败。' })
   }
 }
 
@@ -197,7 +214,7 @@ const selectPanel = (panel: 'console' | 'skill' | 'settings') => {
 
 const bootstrap = async () => {
   if (!openclaw?.startupBootstrap) {
-    stage.value = 'install'
+    showBasicConfig({ code: 'BOOTSTRAP_MISSING', message: '未检测到启动能力，请先安装。' })
     return
   }
 
@@ -205,35 +222,41 @@ const bootstrap = async () => {
   const [result] = await Promise.all([bootstrapPromise, delay(3000)])
 
   if (!result || !result.installed) {
-    stage.value = 'install'
-    return
-  }
-
-  if (result.dashboardUrl) {
-    dashboardUrl.value = result.dashboardUrl
-    stage.value = 'home'
+    showBasicConfig({ code: 'NOT_INSTALLED', message: '未检测到 OpenClaw，请先完成安装。' })
     return
   }
 
   if (result.error) {
-    homeError.value = result.error
-    stage.value = 'home-error'
+    showBasicConfig(result.error)
     return
   }
 
-  stage.value = 'home-error'
-  homeError.value = { code: 'DASHBOARD_MISSING', message: '未获取到控制台地址，请重试。' }
+  if (result.tokenReady === false) {
+    showBasicConfig({ code: 'TOKEN_MISSING', message: '未检测到控制台 token，请先完成授权。' })
+    return
+  }
+
+  if (result.dashboardUrl) {
+    if (!hasDashboardToken(result.dashboardUrl)) {
+      showBasicConfig({ code: 'TOKEN_MISSING', message: '未检测到控制台 token，请先完成授权。' })
+      return
+    }
+    dashboardUrl.value = result.dashboardUrl
+    stage.value = 'home'
+    return
+  }
+  showBasicConfig({ code: 'DASHBOARD_MISSING', message: '未获取到控制台地址，请重试。' })
 }
 
 onMounted(() => {
   if (!openclaw) {
-    stage.value = 'install'
+    showBasicConfig({ code: 'NOT_INSTALLED', message: '未检测到 OpenClaw，请先完成安装。' })
     return
   }
   openclaw.onLog((msg: string) => {
     const line = msg.trim()
     if (line) logs.value.push(line)
-    if (started.value && stage.value === 'installing' && progressValue.value < 95) {
+    if (started.value && installStage.value === 'installing' && progressValue.value < 95) {
       progressValue.value = Math.min(95, progressValue.value + 0.6)
     }
   })
@@ -248,15 +271,22 @@ onMounted(() => {
   })
   openclaw.onError((payload: InstallError) => {
     error.value = payload
-    stage.value = 'install'
+    installStage.value = 'install'
+    showBasicConfig()
   })
   openclaw.onInstallDone(() => {
-    stage.value = 'install-success'
+    installStage.value = 'install-success'
     started.value = false
     currentStep.value = 'Install complete'
     progressValue.value = 100
+    ensureGatewayToken()
   })
   openclaw.onGatewayReady((payload: { dashboardUrl: string }) => {
+    if (!hasDashboardToken(payload.dashboardUrl)) {
+      gatewayStarting.value = false
+      showBasicConfig({ code: 'TOKEN_MISSING', message: '未检测到控制台 token，请先完成授权。' })
+      return
+    }
     dashboardUrl.value = payload.dashboardUrl
     gatewayStarting.value = false
     homeError.value = null

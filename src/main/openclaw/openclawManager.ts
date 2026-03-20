@@ -54,6 +54,25 @@ export async function getDashboardUrl(
   return url
 }
 
+export function hasDashboardToken(url: string | null) {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    if (parsed.search && new URLSearchParams(parsed.search).has('token')) {
+      return true
+    }
+    if (parsed.hash) {
+      const hash = parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash
+      if (new URLSearchParams(hash).has('token')) {
+        return true
+      }
+    }
+  } catch {
+    // ignore parse error and fallback to raw match
+  }
+  return /(^|[#?&])token=/.test(url)
+}
+
 export function startOAuthFlow(
   provider: string,
   onUpdate: (data: { url: string | null; userCode: string | null; error: string | null; chunk: string }) => void
