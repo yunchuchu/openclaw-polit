@@ -1,4 +1,5 @@
 import { app, BrowserWindow, nativeImage, shell } from 'electron'
+import { spawn } from 'node:child_process'
 import os from 'node:os'
 import fs from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -23,6 +24,8 @@ import { getDashboardUrl, hasDashboardToken, startGateway, startOAuthFlow } from
 
 const supervisor = new ProcessSupervisor()
 let currentDashboardUrl: string | null = null
+let gatewayProcess: ReturnType<typeof startGateway> | null = null
+let gatewayRunning = false
 
 type ExecResult = { stdout: string; stderr: string; code: number }
 type PluginList = {
@@ -46,6 +49,25 @@ const makeTokenError = (code: string, message: string) => {
   const error = new Error(message) as Error & { code?: string }
   error.code = code
   return error
+}
+
+const extractGatewayToken = (url: string | null) => {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.search) {
+      const token = new URLSearchParams(parsed.search).get('token')
+      if (token) return token
+    }
+    if (parsed.hash) {
+      const hash = parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash
+      const token = new URLSearchParams(hash).get('token')
+      if (token) return token
+    }
+  } catch {
+    // ignore parse error
+  }
+  return null
 }
 
 function resolvePortableGitArchive() {
@@ -375,6 +397,19 @@ async function runStartupBootstrap(win: BrowserWindow) {
     await ensureGatewayMode(exec, win)
     const result = await resolveDashboardUrlWithToken(exec, win)
     dashboardUrl = result.dashboardUrl
+    const token = extractGatewayToken(dashboardUrl)
+
+    await execCommand('openclaw gateway stop')
+
+    emitStep(win, 'Starting Gateway')
+    const gateway = await startGateway(token)
+    attachGatewayProcess(gateway)
+    supervisor.track(gateway)
+    gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
+    gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
+
+    currentDashboardUrl = dashboardUrl
+    return { installed: true as const, tokenReady: true as const, dashboardUrl }
   } catch (error: any) {
     return {
       installed: true as const,
@@ -385,26 +420,94 @@ async function runStartupBootstrap(win: BrowserWindow) {
       }
     }
   }
+}
 
-  try {
-    emitStep(win, 'Starting Gateway')
-    const gateway = await startGateway()
-    supervisor.track(gateway)
-    gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
-    gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
-
-    currentDashboardUrl = dashboardUrl
-    return { installed: true as const, tokenReady: true as const, dashboardUrl }
-  } catch (error: any) {
-    return {
-      installed: true as const,
-      tokenReady: true as const,
-      error: {
-        code: 'GATEWAY_BOOTSTRAP_FAILED',
-        message: error?.message || 'Failed to start gateway.'
-      }
+function attachGatewayProcess(proc: ReturnType<typeof startGateway>) {
+  gatewayProcess = proc
+  gatewayRunning = true
+  proc.on('exit', () => {
+    if (gatewayProcess === proc) {
+      gatewayProcess = null
+      gatewayRunning = false
     }
+  })
+}
+
+async function stopGatewayProcess() {
+  const proc = gatewayProcess
+  await execCommand('openclaw gateway stop')
+  if (!proc) {
+    gatewayRunning = false
+    return
   }
+
+  const pid = proc.pid
+  await new Promise<void>((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      gatewayProcess = null
+      gatewayRunning = false
+      resolve()
+    }
+
+    proc.on('exit', finish)
+    try {
+      if (pid && process.platform === 'win32') {
+        const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'])
+        killer.on('exit', finish)
+      } else if (pid) {
+        try {
+          process.kill(-pid, 'SIGTERM')
+        } catch {
+          proc.kill('SIGTERM')
+        }
+      } else {
+        proc.kill('SIGTERM')
+      }
+    } catch {
+      finish()
+    }
+    if (pid && process.platform !== 'win32') {
+      setTimeout(() => {
+        try {
+          process.kill(-pid, 'SIGKILL')
+        } catch {
+          try {
+            proc.kill('SIGKILL')
+          } catch {
+            // ignore
+          }
+        }
+      }, 1500)
+    }
+    setTimeout(finish, 2000)
+  })
+}
+
+async function runGatewayStatus() {
+  return { ok: true as const, running: gatewayRunning }
+}
+
+async function runGatewayStop() {
+  await stopGatewayProcess()
+  return { ok: true as const, running: false }
+}
+
+async function runGatewayRestart(win: BrowserWindow) {
+  await stopGatewayProcess()
+  await runGatewayFlow(win)
+  return { ok: true as const, running: true }
+}
+
+async function runOpenclawInfo() {
+  const versionResult = await execCommand('openclaw -v')
+  if (versionResult.code !== 0) {
+    return { installed: false as const, version: null as string | null, gatewayRunning }
+  }
+  const version = versionResult.stdout.trim() || null
+  return { installed: true as const, version, gatewayRunning }
 }
 
 async function runAuthFlow(win: BrowserWindow) {
@@ -582,9 +685,13 @@ async function runGatewayFlow(win: BrowserWindow) {
 
   await ensureGatewayMode(exec, win)
   const { dashboardUrl } = await resolveDashboardUrlWithToken(exec, win)
+  const token = extractGatewayToken(dashboardUrl)
+
+  await execCommand('openclaw gateway stop')
 
   emitStep(win, 'Starting Gateway')
-  const gateway = await startGateway()
+  const gateway = await startGateway(token)
+  attachGatewayProcess(gateway)
   supervisor.track(gateway)
   gateway.stdout?.on('data', (chunk) => emitLog(win, chunk.toString()))
   gateway.stderr?.on('data', (chunk) => emitLog(win, chunk.toString()))
@@ -657,6 +764,8 @@ async function runUninstallFlow(win: BrowserWindow) {
 
   log('开始卸载 OpenClaw...')
   supervisor.stopAll()
+  gatewayProcess = null
+  gatewayRunning = false
   log('已停止应用内 OpenClaw 进程。')
 
   const platform = process.platform
@@ -875,9 +984,13 @@ function createWindow() {
     startAuth: async () => runAuthFlow(win),
     startExternalAuth: async () => runExternalAuthFlow(win),
     startGateway: async () => runGatewayFlow(win),
+    gatewayStatus: async () => runGatewayStatus(),
+    gatewayStop: async () => runGatewayStop(),
+    gatewayRestart: async () => runGatewayRestart(win),
     ensureGatewayToken: async () => runEnsureGatewayToken(win),
     startUninstall: async () => runUninstallFlow(win),
     startupBootstrap: async () => runStartupBootstrap(win),
+    openclawInfo: async () => runOpenclawInfo(),
     getLogs,
     getModelConfig: async () => runGetModelConfig(),
     saveModelConfig: async (payload) => runSaveModelConfig(payload),
@@ -894,7 +1007,10 @@ function createWindow() {
 
 app.whenReady().then(createWindow)
 
-app.on('before-quit', () => supervisor.stopAll())
+app.on('before-quit', () => {
+  stopGatewayProcess()
+  supervisor.stopAll()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

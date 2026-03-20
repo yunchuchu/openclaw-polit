@@ -22,6 +22,84 @@
               <p class="error-title">启动未完成</p>
               <p class="error-desc">{{ basicConfigError.message }}</p>
             </div>
+
+            <div class="settings-card basic-info-card">
+              <div class="settings-card-header">
+                <div>
+                  <h3>OpenClaw 基础信息</h3>
+                  <p>查看版本、安装状态与运行情况。</p>
+                </div>
+              </div>
+
+              <div v-if="infoLoading" class="settings-progress">
+                <div class="spinner" aria-hidden="true"></div>
+                <p>正在读取基础信息…</p>
+              </div>
+
+              <div v-else class="basic-info-grid">
+                <div class="basic-info-item">
+                  <div class="basic-info-label">版本号</div>
+                  <div class="basic-info-value">{{ versionLabel }}</div>
+                </div>
+                <div class="basic-info-item">
+                  <div class="basic-info-label">安装状态</div>
+                  <div class="basic-info-value">
+                    <span class="status-chip" :class="installed ? 'status-chip--success' : 'status-chip--neutral'">
+                      {{ installed ? '已安装' : '未安装' }}
+                    </span>
+                  </div>
+                </div>
+                <div class="basic-info-item">
+                  <div class="basic-info-label">运行状态</div>
+                  <div class="basic-info-value">
+                    <span class="status-chip" :class="gatewayRunning ? 'status-chip--success' : 'status-chip--neutral'">
+                      {{ gatewayRunning ? '运行中' : '未运行' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="infoError" class="error-card">
+                <p class="error-title">基础信息读取失败</p>
+                <p class="error-detail">{{ infoError }}</p>
+              </div>
+
+              <div class="action-row align-left">
+                <button v-if="!installed" class="btn primary" type="button" @click="goInstallWizard">
+                  安装
+                </button>
+                <button
+                  v-else-if="!gatewayRunning"
+                  class="btn primary"
+                  type="button"
+                  :disabled="isActionRunning || infoLoading"
+                  @click="handleStartGateway"
+                >
+                  {{ actionState === 'starting' ? '正在启动…' : '启动' }}
+                </button>
+                <template v-else>
+                  <button
+                    class="btn danger"
+                    type="button"
+                    :disabled="isActionRunning || infoLoading"
+                    @click="handleStopGateway"
+                  >
+                    {{ actionState === 'stopping' ? '正在关闭…' : '关闭' }}
+                  </button>
+                  <button
+                    class="btn ghost"
+                    type="button"
+                    :disabled="isActionRunning || infoLoading"
+                    @click="handleRestartGateway"
+                  >
+                    {{ actionState === 'restarting' ? '正在重启…' : '重启' }}
+                  </button>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="currentSection === 'install-wizard'" class="settings-section">
             <InstallPanel
               :stage="installStage"
               :current-step="installCurrentStep"
@@ -329,20 +407,6 @@
             </div>
           </div>
 
-          <div v-show="currentSection === 'shutdown-restart'" class="settings-section">
-            <div class="settings-card">
-              <div class="settings-card-header">
-                <div>
-                  <h3>关闭重启</h3>
-                  <p>快速关闭应用并重新启动相关服务。</p>
-                </div>
-              </div>
-              <p class="settings-placeholder">该功能正在开发中，敬请期待。</p>
-              <div class="action-row align-left">
-                <button class="btn ghost" type="button" disabled>即将上线</button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -359,10 +423,11 @@ type QwenAuthState = 'idle' | 'running' | 'success' | 'error'
 type QwenSaveState = 'idle' | 'saving' | 'success' | 'error'
 type InstallStage = 'install' | 'installing' | 'install-success'
 type InstallError = { code: string; message: string }
+type OpenclawInfo = { installed: boolean; version: string | null; gatewayRunning: boolean }
 
 const openclaw = (window as any).openclaw
 
-type SettingsSectionId = 'basic-config' | 'uninstall' | 'model-api' | 'reset-config' | 'shutdown-restart'
+type SettingsSectionId = 'basic-config' | 'install-wizard' | 'uninstall' | 'model-api' | 'reset-config'
 
 const props = defineProps<{
   activeSection?: SettingsSectionId
@@ -382,6 +447,9 @@ const emit = defineEmits<{
   (event: 'retry-install'): void
   (event: 'copy-logs'): void
   (event: 'start-gateway'): void
+  (event: 'reset-install'): void
+  (event: 'gateway-stopped'): void
+  (event: 'gateway-restarting'): void
 }>()
 
 const {
@@ -405,11 +473,21 @@ const settingsItems = [
   { id: 'basic-config', label: '基础配置' },
   { id: 'uninstall', label: 'openclaw 卸载', tone: 'danger' },
   { id: 'model-api', label: '模型API配置' },
-  { id: 'reset-config', label: '重置配置文件' },
-  { id: 'shutdown-restart', label: '关闭重启' }
+  { id: 'reset-config', label: '重置配置文件' }
 ]
 
 const isRunning = computed(() => uninstallState.value === 'running')
+const infoLoading = ref(false)
+const infoError = ref<string | null>(null)
+const installed = ref(false)
+const version = ref<string | null>(null)
+const gatewayRunning = ref(false)
+const actionState = ref<'idle' | 'starting' | 'stopping' | 'restarting'>('idle')
+const isActionRunning = computed(() => actionState.value !== 'idle')
+const versionLabel = computed(() => {
+  if (!installed.value) return '未安装'
+  return version.value || '未知版本'
+})
 const macScript = `# 1. 停止进程
 pkill -f "openclaw gateway" 2>/dev/null || true
 pkill -f "openclaw models" 2>/dev/null || true
@@ -532,6 +610,92 @@ const selectSection = (id: SettingsSectionId) => {
   showManual.value = false
 }
 
+const loadOpenclawInfo = async () => {
+  if (!openclaw?.getOpenclawInfo) {
+    infoError.value = '未检测到基础信息读取能力，请检查应用版本。'
+    return
+  }
+  infoLoading.value = true
+  infoError.value = null
+  try {
+    const result = (await openclaw.getOpenclawInfo()) as OpenclawInfo
+    installed.value = Boolean(result?.installed)
+    version.value = result?.version ?? null
+    gatewayRunning.value = Boolean(result?.gatewayRunning)
+  } catch (error: any) {
+    infoError.value = error?.message || '读取基础信息失败，请稍后重试。'
+  } finally {
+    infoLoading.value = false
+  }
+}
+
+const goInstallWizard = () => {
+  emit('reset-install')
+  selectSection('install-wizard')
+}
+
+const handleStartGateway = async () => {
+  if (!openclaw?.startGateway) {
+    infoError.value = '未检测到启动能力，请检查应用版本。'
+    return
+  }
+  actionState.value = 'starting'
+  infoError.value = null
+  try {
+    await openclaw.startGateway()
+  } catch (error: any) {
+    infoError.value = error?.message || '启动失败，请稍后重试。'
+  } finally {
+    actionState.value = 'idle'
+    await loadOpenclawInfo()
+  }
+}
+
+const handleStopGateway = async () => {
+  if (!openclaw?.stopGateway) {
+    infoError.value = '未检测到关闭能力，请检查应用版本。'
+    return
+  }
+  actionState.value = 'stopping'
+  infoError.value = null
+  let ok = false
+  try {
+    await openclaw.stopGateway()
+    ok = true
+  } catch (error: any) {
+    infoError.value = error?.message || '关闭失败，请稍后重试。'
+  } finally {
+    actionState.value = 'idle'
+    await loadOpenclawInfo()
+    if (ok) {
+      emit('gateway-stopped')
+    }
+  }
+}
+
+const handleRestartGateway = async () => {
+  if (!openclaw?.restartGateway) {
+    infoError.value = '未检测到重启能力，请检查应用版本。'
+    return
+  }
+  actionState.value = 'restarting'
+  infoError.value = null
+  emit('gateway-restarting')
+  let ok = false
+  try {
+    await openclaw.restartGateway()
+    ok = true
+  } catch (error: any) {
+    infoError.value = error?.message || '重启失败，请稍后重试。'
+  } finally {
+    actionState.value = 'idle'
+    await loadOpenclawInfo()
+    if (!ok) {
+      emit('gateway-stopped')
+    }
+  }
+}
+
 watch(
   () => props.activeSection,
   (value) => {
@@ -540,6 +704,12 @@ watch(
     }
   }
 )
+
+watch(installStage, (value) => {
+  if (value === 'install-success') {
+    loadOpenclawInfo()
+  }
+})
 
 const startUninstall = async () => {
   if (!openclaw?.uninstall) {
@@ -559,6 +729,7 @@ const startUninstall = async () => {
     }
     if (result?.ok) {
       uninstallState.value = 'success'
+      await loadOpenclawInfo()
       return
     }
     uninstallState.value = 'error'
@@ -748,6 +919,10 @@ onMounted(() => {
   openclaw.onUninstallLog((msg: string) => {
     uninstallLogs.value.push(msg)
   })
+})
+
+onMounted(() => {
+  loadOpenclawInfo()
 })
 
 watch([selectedProvider, customProviderId, apiKey, baseUrl, defaultModel], () => {

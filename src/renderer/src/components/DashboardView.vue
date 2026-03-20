@@ -11,6 +11,10 @@
         class="dashboard-webview"
         style="flex: 1 1 auto; width: 100%; height: 100%; border: 0;"
       />
+      <div v-if="loading" class="dashboard-loading">
+        <div class="spinner"></div>
+        <p>正在启动控制台，请稍候…</p>
+      </div>
     </div>
   </section>
 </template>
@@ -102,6 +106,7 @@ const enforceIframeHeight = () => {
   `
   webview.executeJavaScript(script).catch(() => {})
 }
+
 
 onMounted(() => {
   const webview = webviewRef.value

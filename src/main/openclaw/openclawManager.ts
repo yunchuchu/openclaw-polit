@@ -41,8 +41,15 @@ const ensurePtyHelperExecutable = () => {
   }
 }
 
-export async function startGateway() {
-  return spawn('openclaw', ['gateway', 'run'], { stdio: 'pipe' })
+export async function startGateway(token?: string | null) {
+  const args = ['gateway', 'run']
+  if (token) {
+    args.push('--token', token)
+  }
+  return spawn('openclaw', args, {
+    stdio: 'pipe',
+    detached: process.platform !== 'win32'
+  })
 }
 
 export async function getDashboardUrl(

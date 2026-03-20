@@ -5,7 +5,12 @@
       <SplashView v-if="stage === 'splash'" />
       <HomeShell v-else :active="activePanel" :disabled="installLocked" @select="selectPanel">
         <template #main>
-          <DashboardView v-if="stage === 'home'" :url="dashboardUrl" :loading="gatewayStarting" />
+          <DashboardView
+            v-if="stage === 'home'"
+            :key="dashboardKey"
+            :url="dashboardUrl"
+            :loading="gatewayStarting"
+          />
           <SettingsPanel
             v-else-if="stage === 'settings'"
             :active-section="settingsSection"
@@ -18,10 +23,13 @@
             :install-progress="progressValue"
             :install-auth-notice="authNotice"
             @update:active-section="settingsSection = $event"
+            @reset-install="resetInstallView"
             @start-install="startInstall"
             @retry-install="retryInstall"
             @copy-logs="copyLogs"
             @start-gateway="startGateway"
+            @gateway-stopped="handleGatewayStopped"
+            @gateway-restarting="handleGatewayRestarting"
           />
           <HomeErrorCard
             v-else-if="stage === 'home-error'"
@@ -51,7 +59,7 @@ import DashboardView from './components/DashboardView.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 
 type InstallError = { code: string; message: string }
-type SettingsSectionId = 'basic-config' | 'uninstall' | 'model-api' | 'reset-config' | 'shutdown-restart'
+type SettingsSectionId = 'basic-config' | 'install-wizard' | 'uninstall' | 'model-api' | 'reset-config'
 
 const stage = ref<'splash' | 'home' | 'home-error' | 'skill' | 'settings'>('splash')
 const currentStep = ref('准备就绪')
@@ -66,6 +74,7 @@ const gatewayStarting = ref(false)
 const installStage = ref<'install' | 'installing' | 'install-success'>('install')
 const settingsSection = ref<SettingsSectionId>('basic-config')
 const basicConfigError = ref<InstallError | null>(null)
+const dashboardKey = ref(0)
 
 const logSummary = computed(() => logs.value)
 const installLocked = computed(() => installStage.value === 'installing')
@@ -113,6 +122,28 @@ const resetInstallState = () => {
   basicConfigError.value = null
   currentStep.value = 'Checking environment'
   progressValue.value = 6
+}
+
+const resetInstallView = () => {
+  logs.value = []
+  error.value = null
+  authNotice.value = null
+  started.value = false
+  installStage.value = 'install'
+  currentStep.value = '准备就绪'
+  progressValue.value = 0
+}
+
+const handleGatewayStopped = () => {
+  dashboardUrl.value = null
+  gatewayStarting.value = false
+  dashboardKey.value += 1
+}
+
+const handleGatewayRestarting = () => {
+  dashboardUrl.value = null
+  gatewayStarting.value = true
+  dashboardKey.value += 1
 }
 
 const showBasicConfig = (payload: InstallError | null = null) => {
@@ -189,6 +220,7 @@ const startGateway = async () => {
   homeError.value = null
   gatewayStarting.value = true
   dashboardUrl.value = null
+  dashboardKey.value += 1
   basicConfigError.value = null
   stage.value = 'home'
   try {
@@ -241,8 +273,12 @@ const bootstrap = async () => {
       showBasicConfig({ code: 'TOKEN_MISSING', message: '未检测到控制台 token，请先完成授权。' })
       return
     }
-    dashboardUrl.value = result.dashboardUrl
+    gatewayStarting.value = true
     stage.value = 'home'
+    await delay(800)
+    dashboardUrl.value = result.dashboardUrl
+    dashboardKey.value += 1
+    gatewayStarting.value = false
     return
   }
   showBasicConfig({ code: 'DASHBOARD_MISSING', message: '未获取到控制台地址，请重试。' })
@@ -288,6 +324,7 @@ onMounted(() => {
       return
     }
     dashboardUrl.value = payload.dashboardUrl
+    dashboardKey.value += 1
     gatewayStarting.value = false
     homeError.value = null
     stage.value = 'home'

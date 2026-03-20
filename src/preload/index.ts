@@ -11,8 +11,12 @@ contextBridge.exposeInMainWorld('openclaw', {
   startAuth: () => ipcRenderer.invoke('auth:start'),
   startExternalAuth: () => ipcRenderer.invoke('auth:external'),
   startGateway: () => ipcRenderer.invoke('gateway:start'),
+  getGatewayStatus: () => ipcRenderer.invoke('gateway:status'),
+  stopGateway: () => ipcRenderer.invoke('gateway:stop'),
+  restartGateway: () => ipcRenderer.invoke('gateway:restart'),
   ensureGatewayToken: () => ipcRenderer.invoke('gateway:ensure-token'),
   uninstall: () => ipcRenderer.invoke('uninstall:run'),
+  getOpenclawInfo: () => ipcRenderer.invoke('openclaw:info'),
   getLogs: () => ipcRenderer.invoke('installer:getLogs'),
   getModelConfig: () => ipcRenderer.invoke('model-config:get'),
   saveModelConfig: (payload: {
